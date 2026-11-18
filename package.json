@@ -1,7 +1,7 @@
 {
   "name": "@dynastxu/dsh-session-control",
   "version": "0.2.0",
-  "description": "Safe pause for a running Session and its subagents, plus a title-bar monitor that pauses, continues, or stops the running and unviewed conversations.",
+  "description": "Session control: safe pause for a running Session and its subagents, plus a title-bar or floating status bar that pauses, continues, or stops the running and unviewed conversations.",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",

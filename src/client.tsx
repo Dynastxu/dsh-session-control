@@ -188,18 +188,21 @@ const STYLES = `
    the golden section of the window; a deployment without a caption row (a browser
    tab) floats it at the top golden section instead, dragged by its grip, and a
    dropped position is stored in frame pixels and wins over that anchor. */
-.dsh-session-control-monitor{position:absolute;z-index:21;display:flex;align-items:center;gap:2px;height:30px;padding:1px 5px 1px 3px;border-radius:10px;left:61.8%;top:8px;transform:translateX(-50%);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;-webkit-app-region:no-drag}
+.dsh-session-control-monitor-root{position:absolute;z-index:21;left:61.8%;top:8px;transform:translateX(-50%);-webkit-app-region:no-drag}
+.dsh-session-control-monitor-root[data-placed]{left:0;transform:none}
+html[data-platform='darwin'] .dsh-session-control-monitor-root{top:calc(var(--dsh-frame-top-clearance, 48px) + 6px)}
+html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--dsh-windows-titlebar-height, 40px) - 30px) / 2)}
+.dsh-session-control-monitor{display:flex;align-items:center;gap:2px;height:30px;padding:1px 5px 1px 3px;border-radius:10px;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px}
 /* A floating bar needs its own surface to sit above the page; the desktop bar sits
    in the caption row, where a fill would read as a second window chrome. */
 .dsh-session-control-monitor[data-floating]{background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 6px 18px rgba(0,0,0,.16)}
-.dsh-session-control-monitor[data-placed]{left:0;transform:none}
 .dsh-session-control-monitor[data-floating][data-glass]{background:color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+/* The popovers are siblings of the blurred bar, not descendants: a child's
+   backdrop-filter samples inside its ancestor's backdrop root, which ends at the
+   bar's own box. */
 .dsh-session-control-settings{position:absolute;top:calc(100% + 6px);right:0;display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 10px 30px var(--dsw-alias-shadow, rgba(0,0,0,.18));color:var(--dsw-alias-label-primary);font-size:13px;white-space:nowrap}
-.dsh-session-control-monitor[data-glass] .dsh-session-control-settings{background:color-mix(in srgb, var(--dsw-alias-bg-base) 78%, transparent);backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
-.dsh-session-control-monitor[data-flip] .dsh-session-control-settings{top:auto;bottom:calc(100% + 6px)}
-html[data-platform='darwin'] .dsh-session-control-monitor{top:calc(var(--dsh-frame-top-clearance, 48px) + 6px)}
-.dsh-session-control-monitor[data-flip] .dsh-session-control-panel{top:auto;bottom:calc(100% + 6px)}
-html[data-windows-titlebar] .dsh-session-control-monitor{top:calc((var(--dsh-windows-titlebar-height, 40px) - 30px) / 2)}
+.dsh-session-control-monitor-root[data-glass] .dsh-session-control-settings,.dsh-session-control-monitor-root[data-glass] .dsh-session-control-panel{background:color-mix(in srgb, var(--dsw-alias-bg-base) 62%, transparent);backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+.dsh-session-control-monitor-root[data-flip] .dsh-session-control-settings,.dsh-session-control-monitor-root[data-flip] .dsh-session-control-panel{top:auto;bottom:calc(100% + 6px)}
 .dsh-session-control-grip{display:grid;place-items:center;flex:none;width:18px;height:100%;color:var(--dsw-alias-label-secondary);cursor:grab;touch-action:none}
 .dsh-session-control-grip:active{cursor:grabbing}
 .dsh-session-control-grip > svg{display:block}
@@ -641,6 +644,8 @@ function SessionMonitor({
   const [failure, setFailure] = React.useState<{ seq: number; text: string } | null>(null)
   const [pending, setPending] = React.useState(false)
   const root = React.useRef<HTMLDivElement | null>(null)
+  /** The visible bar; drag measurement ignores the popovers that hang off the wrapper. */
+  const bar = React.useRef<HTMLDivElement | null>(null)
   const sequence = React.useRef(0)
   const timing = React.useRef(readStoredTimings())
   /** Sessions this mount has actually seen running; only those spans can be closed. */
@@ -786,7 +791,7 @@ function SessionMonitor({
   }
 
   const clampInto = (x: number, y: number): BarPosition => {
-    const element = root.current
+    const element = bar.current
     const frame = frameBox()
     const width = element?.offsetWidth ?? 0
     const height = element?.offsetHeight ?? 0
@@ -797,8 +802,8 @@ function SessionMonitor({
   }
 
   const onDragStart = (event: React.PointerEvent<HTMLElement>): void => {
-    if (event.button !== 0 || root.current === null) return
-    const rect = root.current.getBoundingClientRect()
+    if (event.button !== 0 || bar.current === null) return
+    const rect = bar.current.getBoundingClientRect()
     const frame = frameBox()
     drag.current = {
       pointerId: event.pointerId,
@@ -945,74 +950,73 @@ function SessionMonitor({
   return (
     <div
       ref={root}
-      className={MONITOR_CLASS}
-      data-floating={floating || undefined}
+      className="dsh-session-control-monitor-root"
       data-glass={floating && glass ? true : undefined}
       data-flip={flip || undefined}
       data-placed={position === null ? undefined : true}
       style={position === null ? undefined : { left: position.x, top: position.y }}
     >
-      {floating ? (
-        <span
-          className="dsh-session-control-grip"
-          aria-hidden
-          onPointerDown={onDragStart}
-          onPointerMove={onDragMove}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
-        >
-          <IconDragHandleOutlineRegular size={14} />
-        </span>
-      ) : null}
-      <Tooltip label={open ? t('monitor.collapse') : t('monitor.expand')} side="bottom" delayMs={500} portal>
-        <button
-          type="button"
-          className="dsh-session-control-chip"
-          aria-expanded={open}
-          aria-label={open ? t('monitor.collapse') : t('monitor.expand')}
-          onClick={() => {
-            setOpen(value => !value)
-          }}
-        >
-          {counters.icon}
-          <span>{counters.text}</span>
-        </button>
-      </Tooltip>
-      <Tooltip label={bulkPauseLabel} side="bottom" delayMs={500} portal>
-        <button
-          type="button"
-          className="dsh-session-control-action"
-          aria-label={bulkPauseLabel}
-          disabled={bulkPauseIds.length === 0 || pending}
-          onClick={() => {
-            void bulk(bulkPauseIds, async id => {
-              const outcome = await requestPause(id, bulkPauseVerb)
-              if (outcome === 'ok') setPhase(id, bulkPauseVerb === 'arm' ? 'armed' : 'idle')
-              // A refused resume means the Host no longer holds that pause: the
-              // mirror is stale, so drop it instead of leaving a dead action.
-              else if (outcome === 'refused') setPhase(id, 'idle')
-              return outcome
-            })
-          }}
-        >
-          {bulkPauseVerb === 'arm' ? <PauseGlyph size={16} /> : <PlayGlyph />}
-        </button>
-      </Tooltip>
-      <Tooltip label={t('monitor.terminateAll')} side="bottom" delayMs={500} portal>
-        <button
-          type="button"
-          className="dsh-session-control-action is-danger"
-          aria-label={t('monitor.terminateAll')}
-          disabled={runningIds.length === 0 || pending}
-          onClick={() => {
-            void bulk(runningIds, id => terminateSession(id))
-          }}
-        >
-          <IconStopFillRegular size={12} />
-        </button>
-      </Tooltip>
-      {floating ? (
-        <>
+      <div ref={bar} className={MONITOR_CLASS} data-floating={floating || undefined}>
+        {floating ? (
+          <span
+            className="dsh-session-control-grip"
+            aria-hidden
+            onPointerDown={onDragStart}
+            onPointerMove={onDragMove}
+            onPointerUp={onDragEnd}
+            onPointerCancel={onDragEnd}
+          >
+            <IconDragHandleOutlineRegular size={14} />
+          </span>
+        ) : null}
+        <Tooltip label={open ? t('monitor.collapse') : t('monitor.expand')} side="bottom" delayMs={500} portal>
+          <button
+            type="button"
+            className="dsh-session-control-chip"
+            aria-expanded={open}
+            aria-label={open ? t('monitor.collapse') : t('monitor.expand')}
+            onClick={() => {
+              setOpen(value => !value)
+            }}
+          >
+            {counters.icon}
+            <span>{counters.text}</span>
+          </button>
+        </Tooltip>
+        <Tooltip label={bulkPauseLabel} side="bottom" delayMs={500} portal>
+          <button
+            type="button"
+            className="dsh-session-control-action"
+            aria-label={bulkPauseLabel}
+            disabled={bulkPauseIds.length === 0 || pending}
+            onClick={() => {
+              void bulk(bulkPauseIds, async id => {
+                const outcome = await requestPause(id, bulkPauseVerb)
+                if (outcome === 'ok') setPhase(id, bulkPauseVerb === 'arm' ? 'armed' : 'idle')
+                // A refused resume means the Host no longer holds that pause: the
+                // mirror is stale, so drop it instead of leaving a dead action.
+                else if (outcome === 'refused') setPhase(id, 'idle')
+                return outcome
+              })
+            }}
+          >
+            {bulkPauseVerb === 'arm' ? <PauseGlyph size={16} /> : <PlayGlyph />}
+          </button>
+        </Tooltip>
+        <Tooltip label={t('monitor.terminateAll')} side="bottom" delayMs={500} portal>
+          <button
+            type="button"
+            className="dsh-session-control-action is-danger"
+            aria-label={t('monitor.terminateAll')}
+            disabled={runningIds.length === 0 || pending}
+            onClick={() => {
+              void bulk(runningIds, id => terminateSession(id))
+            }}
+          >
+            <IconStopFillRegular size={12} />
+          </button>
+        </Tooltip>
+        {floating ? (
           <Tooltip label={t('monitor.settings')} side="bottom" delayMs={500} portal>
             <button
               type="button"
@@ -1027,20 +1031,20 @@ function SessionMonitor({
               <IconSettingsOutlineRegular size={16} />
             </button>
           </Tooltip>
-          {settingsOpen ? (
-            <div className="dsh-session-control-settings" role="group" aria-label={t('monitor.settings')}>
-              <span>{t('monitor.glass')}</span>
-              <Switch
-                checked={glass}
-                label={t('monitor.glass')}
-                onChange={next => {
-                  setGlass(next)
-                  writeStoredGlass(next)
-                }}
-              />
-            </div>
-          ) : null}
-        </>
+        ) : null}
+      </div>
+      {floating && settingsOpen ? (
+        <div className="dsh-session-control-settings" role="group" aria-label={t('monitor.settings')}>
+          <span>{t('monitor.glass')}</span>
+          <Switch
+            checked={glass}
+            label={t('monitor.glass')}
+            onChange={next => {
+              setGlass(next)
+              writeStoredGlass(next)
+            }}
+          />
+        </div>
       ) : null}
       {open ? (
         <div className="dsh-session-control-panel" role="dialog" aria-label={t('monitor.expand')}>

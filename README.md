@@ -1,6 +1,6 @@
-# Session pause
+# Session control
 
-A safe-pause control for the DSH composer. It sits immediately left of the send/stop button, lets the step in flight finish, and stops the run before its next model request instead of aborting work mid-stream. One more click continues from exactly that point.
+Session control for DeepSeek Harness. A safe-pause control beside the composer stops a run before its next model request instead of aborting work mid-stream, and one status bar — anchored in the desktop title bar, floating in a browser tab — reports and controls every conversation at once.
 
 ## What it does
 

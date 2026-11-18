@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Session pause",
-    "description": "Adds a safe-pause control beside the composer's send button and a title-bar monitor: the chip counts running and unviewed conversations, lists them with elapsed time, and pauses, continues, or stops one or all of them. A paused agent and its running subagents stop before their next model request and continue from that point with one more click."
+    "title": "Session control",
+    "description": "Manage every conversation from one place. A safe-pause control beside the composer stops the run and its running subagents before their next model request and continues from that point on the next click; a title-bar or floating status bar lists the running and finished-but-unviewed conversations with per-row and bulk pause, continue, and stop, plus a frosted-glass appearance toggle."
   }
 }

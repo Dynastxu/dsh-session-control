@@ -1,20 +1,27 @@
 {
   "name": "@dynastxu/dsh-session-control",
-  "version": "0.1.0",
-  "description": "Safe pause for a running Session: the composer gains a control that stops the loop before its next model request instead of aborting the step in flight.",
+  "version": "0.2.0",
+  "description": "Safe pause for a running Session and its subagents, plus a title-bar monitor that pauses, continues, or stops the running and unviewed conversations.",
   "type": "module",
   "scripts": {
-    "test": "node tests/host.test.js"
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
+    "lint": "oxlint src tests scripts",
+    "lint:fix": "oxlint src tests scripts --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node tests/host.test.js && node tests/client-artifact.test.js",
+    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm build && pnpm test",
+    "prepare": "node scripts/build.mjs"
   },
   "exports": {
-    ".": "./index.js",
-    "./client": "./client.js",
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg"
   },
   "files": [
-    "index.js",
-    "client.js",
+    "lib",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
@@ -39,14 +46,15 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-layout",
         "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   },
   "devDependencies": {
+    "oxlint": "^1.81.0",
     "prettier": "^3.10.1",
     "typescript": "^6.0.3",
-    "pnpm": "^12.21.0",
-    "eslint": "^10.15.0"
+    "pnpm": "^12.21.0"
   }
 }

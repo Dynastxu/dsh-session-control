@@ -1,0 +1,39 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [],
+  "env": {
+    "builtin": true,
+    "es2024": true
+  },
+  "options": {
+    "reportUnusedDisableDirectives": "warn"
+  },
+  "ignorePatterns": ["lib/**", "build-tmp/**", "node_modules/**", ".pnpm-store/**", ".pnpm-home/**"],
+  "rules": {
+    "no-var": "error",
+    "prefer-const": "error",
+    "prefer-rest-params": "error",
+    "prefer-spread": "error",
+    "no-array-constructor": "error",
+    "no-unused-expressions": "error",
+    "no-useless-constructor": "error",
+    "no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["tests/**/*.js", "scripts/**/*.mjs"],
+      "env": { "node": true }
+    },
+    {
+      "files": ["src/**/*.ts", "src/**/*.tsx"],
+      "env": { "browser": false }
+    }
+  ]
+}

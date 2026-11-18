@@ -6,7 +6,7 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { apply, PAUSE_COMMAND } from '../index.js'
+import { apply, PAUSE_COMMAND } from '../lib/index.js'
 
 /** One live Agent stub recording everything the plugin does to it. */
 function createAgent(id, { status = 'running', parent, origin } = {}) {
@@ -15,8 +15,8 @@ function createAgent(id, { status = 'running', parent, origin } = {}) {
     id,
     isSeeded: false,
     createdAt: 1,
-    ...origin === undefined ? {} : { origin },
-    ...parent === undefined ? {} : { parentSession: parent },
+    ...(origin === undefined ? {} : { origin }),
+    ...(parent === undefined ? {} : { parentSession: parent }),
   }
   return {
     received,
@@ -24,10 +24,21 @@ function createAgent(id, { status = 'running', parent, origin } = {}) {
       id,
       status,
       session: { header },
-      inbox: { splice: (...args) => { received.splices.push(args); return [] } },
-      cancel: (cause, options) => { received.cancellations.push([cause, options]) },
-      followup: (message) => { received.followups.push(message) },
-      inject: (message) => { received.injections.push(message) },
+      inbox: {
+        splice: (...args) => {
+          received.splices.push(args)
+          return []
+        },
+      },
+      cancel: (cause, options) => {
+        received.cancellations.push([cause, options])
+      },
+      followup: message => {
+        received.followups.push(message)
+      },
+      inject: message => {
+        received.injections.push(message)
+      },
     },
   }
 }
@@ -43,30 +54,39 @@ function createHost(agents = []) {
     // The group above stays reachable so a case can add an agent after boot.
     agents,
     fire: (event, payload, next) => listeners.get(event)(payload, next),
-    invoke: (agent, rawInput = '') => commands.get(PAUSE_COMMAND).handler({
-      commandId: 'cmd-1',
-      agent,
-      rawInput,
-      attachments: [],
-      signal: new AbortController().signal,
-    }),
+    invoke: (agent, rawInput = '') =>
+      commands.get(PAUSE_COMMAND).handler({
+        commandId: 'cmd-1',
+        agent,
+        rawInput,
+        attachments: [],
+        signal: new AbortController().signal,
+      }),
   }
   apply({
     on: (event, listener) => {
       listeners.set(event, listener)
-      return () => { listeners.delete(event) }
+      return () => {
+        listeners.delete(event)
+      }
     },
     commands: {
-      register: (definition) => {
+      register: definition => {
         commands.set(definition.name, definition)
-        return () => { commands.delete(definition.name) }
+        return () => {
+          commands.delete(definition.name)
+        }
       },
     },
     agents: {
       list: () => host.agents,
       get: id => host.agents.find(agent => agent.id === id),
     },
-    logger: { warn: (...args) => { warnings.push(args) } },
+    logger: {
+      warn: (...args) => {
+        warnings.push(args)
+      },
+    },
   })
   return host
 }
@@ -124,20 +144,32 @@ test('an ancestor of the paused agent is never armed', async () => {
   const host = createHost(tree.all.map(item => item.agent))
   host.invoke(tree.first.agent)
   assert.deepEqual(await stopAtBoundary(host, tree.grandchild.agent), { kind: 'reject' })
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.root.agent, messages: [], turn: 2, step: 1 }, enter), {
-    kind: 'enter', messages: [],
-  })
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.second.agent, messages: [], turn: 1, step: 1 }, enter), {
-    kind: 'enter', messages: [],
-  })
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.root.agent, messages: [], turn: 2, step: 1 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.second.agent, messages: [], turn: 1, step: 1 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
 })
 
 test('an unarmed member always delegates and is never cancelled', async () => {
   const tree = createTree()
   const host = createHost(tree.all.map(item => item.agent))
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.root.agent, messages: [], turn: 1, step: 1 }, enter), {
-    kind: 'enter', messages: [],
-  })
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.root.agent, messages: [], turn: 1, step: 1 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
   assert.deepEqual(tree.root.received.cancellations, [])
 })
 
@@ -174,9 +206,13 @@ test('resume continues every stopped run with an empty receipt', async () => {
   assert.equal(tree.root.received.followups[0].source.kind, 'retry')
   // The stopped members that never fired are only disarmed.
   assert.equal(tree.first.received.followups.length, 0)
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.first.agent, messages: [], turn: 2, step: 1 }, enter), {
-    kind: 'enter', messages: [],
-  })
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.first.agent, messages: [], turn: 2, step: 1 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
 })
 
 test('resume is refused once the pause is spent', async () => {
@@ -193,9 +229,13 @@ test('an armed member that never fired is released when its run ends', async () 
   const host = createHost(tree.all.map(item => item.agent))
   host.invoke(tree.root.agent)
   host.fire('agent/status', { agent: tree.second.agent, status: 'idle' })
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.second.agent, messages: [], turn: 2, step: 1 }, enter), {
-    kind: 'enter', messages: [],
-  })
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.second.agent, messages: [], turn: 2, step: 1 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
 })
 
 test('a stopped run keeps its record until it is resumed', async () => {
@@ -234,9 +274,13 @@ test('/pause off disarms the whole pause', async () => {
   const host = createHost(tree.all.map(item => item.agent))
   host.invoke(tree.root.agent)
   assert.equal(host.invoke(tree.root.agent, 'off').kind, 'success')
-  assert.deepEqual(await host.fire('agent/pre-step', { agent: tree.grandchild.agent, messages: [], turn: 1, step: 2 }, enter), {
-    kind: 'enter', messages: [],
-  })
+  assert.deepEqual(
+    await host.fire('agent/pre-step', { agent: tree.grandchild.agent, messages: [], turn: 1, step: 2 }, enter),
+    {
+      kind: 'enter',
+      messages: [],
+    },
+  )
   assert.equal(host.invoke(tree.root.agent, 'resume').kind, 'error')
 })
 

@@ -18,11 +18,11 @@ A pause that never reached a boundary — because a run ended on its own — is 
 
 ### The three states
 
-| State | Glyph and fill | Press |
-|---|---|---|
-| Run active, no pause | Pause glyph, neutral fill | Arm the pause |
-| Run active, pause armed | Pause glyph, primary fill | Cancel the pause |
-| Paused | Play glyph, primary fill | Continue the runs |
+| State                   | Glyph and fill            | Press             |
+| ----------------------- | ------------------------- | ----------------- |
+| Run active, no pause    | Pause glyph, neutral fill | Arm the pause     |
+| Run active, pause armed | Pause glyph, primary fill | Cancel the pause  |
+| Paused                  | Play glyph, primary fill  | Continue the runs |
 
 ## Pausing a subagent
 
@@ -33,6 +33,26 @@ Its live parent is notified through runtime context, queued without waking the p
 The notice is recorded as a context row from the `session-control` source, so the parent model learns why those results will not arrive before the user resumes them. A top-level Session has no parent, so nothing is notified.
 
 Only agents that are running are paused. An idle child stays untouched, because arming it would stop its next turn — including a message the user had just sent.
+
+## Title-bar monitor
+
+A second entry, `shell.overlay` id `session-control.monitor`, draws a status chip in the desktop title bar at three quarters of the window width, followed by two bulk actions.
+
+The chip reports the most urgent fact first:
+
+| Condition                                | Chip                                |
+| ---------------------------------------- | ----------------------------------- |
+| Any conversation running                 | Spinner + `n 个正在运行的对话`      |
+| None running, some finished and unviewed | Green done dot + `n 个未查看的对话` |
+| Neither                                  | `没有需要关注的对话`, no icon       |
+
+Opening the chip lists the running conversations and then the finished-but-unviewed ones. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action. The panel is capped at 60vh (and 420px) and scrolls.
+
+Bulk actions run over every conversation at once: pause-all (which becomes continue-all once every running conversation already has a pause), and stop-all. Stop is the Session controller's own cancellation: the turn ends as a stopped user turn and queued input is kept.
+
+Elapsed time counts from when this page observed the run start, or from the moment the run stopped for a finished conversation. A run already in flight when the page loaded counts from zero.
+
+The monitor covers top-level conversations; subagent Sessions are left to the conversation they belong to. It keeps its pause bookkeeping in a client store shared with the composer button, and the monitor — which sees every Session — is the single writer of those transitions.
 
 ## The `/pause` command
 
@@ -50,22 +70,39 @@ It reuses the composer's own geometry and materials: a 34px circle on the row's 
 
 ## Files
 
-| File | Role |
-|---|---|
-| `index.js` | Host half: the delegation-tree walk, the `agent/pre-step` gate, the parent notice, and the `/pause` command with its continuation. |
-| `client.js` | Browser half: the `conversation.input.activity` entry, its styles, dictionaries, and the Remote call. |
-| `cordis.patch.yml` | Bundle patch inserting the Host row. |
-| `locale/*.json` | Plugin display title and description. |
+| File                            | Role                                                                                                                               |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `src/index.ts`                  | Host half: the delegation-tree walk, the `agent/pre-step` gate, the parent notice, and the `/pause` command with its continuation. |
+| `src/client.tsx`                | Browser half: the composer pause entry, the title-bar monitor, their styles and dictionaries, and the Remote calls.                |
+| `lib/index.js`, `lib/client.js` | Built artifacts the Loader and the Web shell load (committed; regenerate with `pnpm build`).                                       |
+| `scripts/build.mjs`             | Compiles the Host half with tsc and wraps the single-file client bundle in the module-loader factory.                              |
+| `cordis.patch.yml`              | Bundle patch inserting the Host row.                                                                                               |
+| `locale/*.json`                 | Plugin display title and description.                                                                                              |
 
 ## Known limitations
 
-- The paused state lives in the Host process and in the button's own React state. Reloading the page during a pause loses the button; `/pause resume` in the composer still continues the runs, and a pause whose runs ended on their own is cleared by the Host.
+- The paused state lives in the Host process and in the client's pause-phase observable. Reloading the page during a pause loses the mirror; `/pause resume` in the composer still continues the runs, and a pause whose runs ended on their own is cleared by the Host.
 - Pausing a one-shot subagent stops it inside the parent's tool call. The parent blocks in that step until the subagent is resumed, because the parent cannot reach its own boundary while the call is outstanding.
 - The parent notice names agents by Session id. Display names live in the subagent catalog, which needs an asynchronous catalog read on the pause path.
 - `conversation.input.activity` holds one occupant. Enabling the experimental voice-input plugin, which also registers there, replaces this control.
+- The monitor shows only inside the Windows caption row (`html[data-windows-titlebar]`). A browser tab or a macOS window has no such row, so the chip stays hidden there while its pause bookkeeping keeps running.
+- The monitor's pause phases are client state, shared with the composer button and lost on reload; the Host stays authoritative and refuses a continue whose pause it no longer holds.
 
 ## Development
 
 ```sh
-pnpm test    # host-half behavior: node tests/host.test.js
+pnpm build         # tsc → lib/index.js, then wrap the client bundle → lib/client.js
+pnpm typecheck     # both compiler faces, no emit
+pnpm lint          # oxlint over src, tests, and scripts
+pnpm format        # prettier --write .
+pnpm test          # host behavior + built-client artifact contract
+pnpm verify        # typecheck + lint + format:check + build + test
 ```
+
+The sources are TypeScript. Type checking resolves the DSH packages through the `paths` table in `tsconfig.json`, which points at the built `lib/types` of the deepseek-harness checkout this plugin lives in. Moving the plugin outside that checkout means depending on the published `@deepseek-ai/*` packages instead.
+
+Formatting follows the checkout's own style (`.prettierrc.json`: no semicolons, single quotes, 120 columns, `arrowParens: avoid`), so the plugin needs no reformat when it moves between the two trees.
+
+Linting is oxlint, the linter the checkout itself uses, because it parses TypeScript without a separate parser package. The plugin carries its own `.oxlintrc.json`: the checkout's config ignores `**/*.js` and `**/*.mjs` and applies its strict rule set only to `packages/*/*` paths, so inheriting it here would have linted almost nothing. ESLint is not used: ESLint 10 cannot parse `.ts` without `typescript-eslint`, which is not installed, and installing it in this checkout came back blocked by the sandbox (pnpm's store operation lock lives outside the workspace). To switch to ESLint, pin `eslint@^9` with `typescript-eslint` and point the `lint` script at it.
+
+The client half is deliberately one module: the shell materializes a plugin as a single `factory(require)` bundle, so a single-file source keeps the build to `tsc` with no bundler. `react`, `react/jsx-runtime`, and `@deepseek-ai/dsh-client-ui-primitives` stay external — they come from the shell's platform module table.

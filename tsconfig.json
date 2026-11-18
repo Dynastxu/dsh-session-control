@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "strict": true,
+    "skipLibCheck": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "paths": {
+      "@deepseek-ai/cordis": ["../vendor/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-agent": ["../packages/core/agent/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-commands": ["../packages/interaction/commands/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-llm": ["../packages/llm/llm/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-session": ["../packages/core/session/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-session/types": ["../packages/core/session/lib/types/types.d.ts"],
+      "@deepseek-ai/dsh-api-session-controller/types": ["../packages/api/session-controller/lib/types/types.d.ts"],
+      "@deepseek-ai/dsh-client-ui-slots": ["../packages/client/ui-slots/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-primitives": ["../packages/client/ui-primitives/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-conversation/client": [
+        "../packages/client/ui-conversation/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-ui-session/client": ["../packages/client/ui-session/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-layout/client": ["../packages/client/ui-layout/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-renderer/client": ["../packages/client/ui-renderer/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-locale/client": ["../packages/client/locale/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-api-remotes/client": ["../packages/api/remotes/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-api-session-controller/client": [
+        "../packages/api/session-controller/lib/types/client/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-client-store": ["../packages/client/store/lib/types/index.d.ts"]
+    }
+  },
+  "include": ["src"]
+}

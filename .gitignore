@@ -125,6 +125,7 @@ dist
 # Editor and agent scratch state
 .idea/
 .tmp/
+build-tmp/
 
 # yarn v2
 .yarn/cache

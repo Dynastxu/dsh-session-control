@@ -19,6 +19,7 @@
 
 import * as React from 'react'
 import {
+  IconDragHandleOutlineRegular,
   IconStopFillRegular,
   IconTriangleRightFillRegular,
   IconWarningOutlineRegular,
@@ -177,16 +178,22 @@ const STYLES = `
 .dsh-session-control-pause:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover-solid)}
 .dsh-session-control-pause.is-engaged:hover:not(:disabled){background:var(--dsw-alias-button-info-hover)}
 }
-/* The bar floats over the frame in every deployment and is dragged by its chip.
-   Its default anchor is the golden section of the caption row (or just under the
-   app header when the deployment has no caption row); a dropped position is
-   stored in frame pixels and wins over this anchor. */
-.dsh-session-control-monitor{position:absolute;z-index:21;display:flex;align-items:center;gap:4px;height:28px;left:61.8%;top:calc(var(--dsh-frame-top-clearance, 48px) + 10px);transform:translateX(-50%);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;-webkit-app-region:no-drag}
+/* Opaque rounded bar. In the desktop app it is anchored under the caption row at
+   the golden section of the window; a deployment without a caption row (a browser
+   tab) floats it at the top golden section instead, dragged by its grip, and a
+   dropped position is stored in frame pixels and wins over that anchor. */
+.dsh-session-control-monitor{position:absolute;z-index:21;display:flex;align-items:center;gap:2px;height:30px;padding:1px 5px 1px 3px;border-radius:10px;left:61.8%;top:8px;transform:translateX(-50%);color:var(--dsw-alias-label-secondary);font-size:13px;line-height:20px;-webkit-app-region:no-drag}
+/* A floating bar needs its own surface to sit above the page; the desktop bar sits
+   in the caption row, where a fill would read as a second window chrome. */
+.dsh-session-control-monitor[data-floating]{background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 6px 18px rgba(0,0,0,.16)}
 .dsh-session-control-monitor[data-placed]{left:0;transform:none}
+html[data-platform='darwin'] .dsh-session-control-monitor{top:calc(var(--dsh-frame-top-clearance, 48px) + 6px)}
 .dsh-session-control-monitor[data-flip] .dsh-session-control-panel{top:auto;bottom:calc(100% + 6px)}
-html[data-windows-titlebar] .dsh-session-control-monitor{top:calc((var(--dsh-windows-titlebar-height, 40px) - 28px) / 2)}
-.dsh-session-control-chip{display:flex;align-items:center;gap:8px;height:28px;max-width:320px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;white-space:nowrap;cursor:grab;box-sizing:border-box;touch-action:none}
-.dsh-session-control-chip:active{cursor:grabbing}
+html[data-windows-titlebar] .dsh-session-control-monitor{top:calc((var(--dsh-windows-titlebar-height, 40px) - 30px) / 2)}
+.dsh-session-control-grip{display:grid;place-items:center;flex:none;width:18px;height:100%;color:var(--dsw-alias-label-secondary);cursor:grab;touch-action:none}
+.dsh-session-control-grip:active{cursor:grabbing}
+.dsh-session-control-grip > svg{display:block}
+.dsh-session-control-chip{display:flex;align-items:center;gap:8px;height:28px;max-width:320px;padding:0 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;white-space:nowrap;cursor:pointer;box-sizing:border-box}
 .dsh-session-control-chip > span:last-child{overflow:hidden;text-overflow:ellipsis}
 .dsh-session-control-chip:hover,.dsh-session-control-chip[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-session-control-chip:focus-visible{outline-offset:-2px}
@@ -198,7 +205,7 @@ html[data-windows-titlebar] .dsh-session-control-monitor{top:calc((var(--dsh-win
 .dsh-session-control-action.is-danger{color:var(--dsw-alias-state-error-primary)}
 .dsh-session-control-action.is-danger:hover:not(:disabled){background:var(--dsw-alias-hovercard-state-error);color:var(--dsw-alias-label-on-color)}
 .dsh-session-control-play{transform:scale(1.35)}
-.dsh-session-control-panel{position:absolute;top:calc(100% + 6px);right:0;width:min(420px, calc(75vw - 24px));max-height:min(60vh, 420px);overflow-y:auto;padding:6px;border-radius:12px;background:var(--dsw-alias-bg-overlay);border:1px solid var(--dsw-alias-border-l1);box-shadow:0 10px 30px var(--dsw-alias-shadow, rgba(0,0,0,.18))}
+.dsh-session-control-panel{position:absolute;top:calc(100% + 6px);right:0;width:min(420px, calc(75vw - 24px));max-height:min(60vh, 420px);overflow-y:auto;padding:6px;border-radius:12px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 10px 30px var(--dsw-alias-shadow, rgba(0,0,0,.18))}
 .dsh-session-control-heading{padding:8px 10px 4px;color:var(--dsw-alias-label-secondary);font-size:12px}
 .dsh-session-control-row{display:flex;align-items:center;gap:8px;height:34px;padding:0 4px 0 0;border-radius:8px}
 .dsh-session-control-row:hover{background:var(--dsw-alias-interactive-bg-hover)}
@@ -597,7 +604,8 @@ function SessionMonitor({
   const timing = React.useRef(readStoredTimings())
   /** Sessions this mount has actually seen running; only those spans can be closed. */
   const watched = React.useRef(new Set<string>())
-  const [position, setPosition] = React.useState<BarPosition | null>(() => readStoredPosition())
+  const floating = typeof document === 'undefined' || !document.documentElement.hasAttribute('data-platform')
+  const [position, setPosition] = React.useState<BarPosition | null>(() => (floating ? readStoredPosition() : null))
   const latestPosition = React.useRef<BarPosition | null>(null)
   const drag = React.useRef<{
     pointerId: number
@@ -607,8 +615,6 @@ function SessionMonitor({
     originY: number
     moved: boolean
   } | null>(null)
-  /** Set when a gesture moved the bar, so its release does not also open the panel. */
-  const dragged = React.useRef(false)
 
   const list = useSessions(state => state.byId)
   const statuses = useSessionStatus(state => state)
@@ -721,9 +727,9 @@ function SessionMonitor({
     }
   }, [open])
 
-  // The bar floats over the frame in every deployment (a browser tab has no
-  // caption row to sit in), so it is dragged by its chip and remembers where it
-  // was dropped. Coordinates are frame-relative and clamped to the frame.
+  // Only a deployment without a caption row floats the bar, and only the grip
+  // drags it: the gesture is captured on the grip, remembers where the bar was
+  // dropped, and stays frame-relative and clamped to the frame.
   const frameBox = (): { width: number; height: number; left: number; top: number } => {
     const host = root.current?.offsetParent
     if (!(host instanceof HTMLElement)) {
@@ -744,7 +750,7 @@ function SessionMonitor({
     }
   }
 
-  const onDragStart = (event: React.PointerEvent<HTMLButtonElement>): void => {
+  const onDragStart = (event: React.PointerEvent<HTMLElement>): void => {
     if (event.button !== 0 || root.current === null) return
     const rect = root.current.getBoundingClientRect()
     const frame = frameBox()
@@ -759,7 +765,7 @@ function SessionMonitor({
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
-  const onDragMove = (event: React.PointerEvent<HTMLButtonElement>): void => {
+  const onDragMove = (event: React.PointerEvent<HTMLElement>): void => {
     const active = drag.current
     if (active === null || active.pointerId !== event.pointerId) return
     const dx = event.clientX - active.startX
@@ -772,7 +778,7 @@ function SessionMonitor({
     setPosition(next)
   }
 
-  const onDragEnd = (event: React.PointerEvent<HTMLButtonElement>): void => {
+  const onDragEnd = (event: React.PointerEvent<HTMLElement>): void => {
     const active = drag.current
     if (active === null || active.pointerId !== event.pointerId) return
     drag.current = null
@@ -780,12 +786,11 @@ function SessionMonitor({
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
     if (!active.moved) return
-    dragged.current = true
     writeStoredPosition(latestPosition.current)
   }
 
   React.useEffect(() => {
-    if (position === null) return
+    if (!floating || position === null) return
     const keepInside = (): void => {
       const next = clampInto(position.x, position.y)
       if (next.x === position.x && next.y === position.y) return
@@ -801,7 +806,7 @@ function SessionMonitor({
   }, [position])
 
   /** A bar dropped in the lower half opens its panel upward. */
-  const flip = position !== null && typeof window !== 'undefined' && position.y > window.innerHeight / 2
+  const flip = floating && position !== null && typeof window !== 'undefined' && position.y > window.innerHeight / 2
 
   const fail = (): void => {
     sequence.current += 1
@@ -895,26 +900,30 @@ function SessionMonitor({
     <div
       ref={root}
       className={MONITOR_CLASS}
+      data-floating={floating || undefined}
       data-flip={flip || undefined}
-      data-placed={position === null || undefined}
+      data-placed={position === null ? undefined : true}
       style={position === null ? undefined : { left: position.x, top: position.y }}
     >
+      {floating ? (
+        <span
+          className="dsh-session-control-grip"
+          aria-hidden
+          onPointerDown={onDragStart}
+          onPointerMove={onDragMove}
+          onPointerUp={onDragEnd}
+          onPointerCancel={onDragEnd}
+        >
+          <IconDragHandleOutlineRegular size={14} />
+        </span>
+      ) : null}
       <Tooltip label={open ? t('monitor.collapse') : t('monitor.expand')} side="bottom" delayMs={500} portal>
         <button
           type="button"
           className="dsh-session-control-chip"
           aria-expanded={open}
           aria-label={open ? t('monitor.collapse') : t('monitor.expand')}
-          onPointerDown={onDragStart}
-          onPointerMove={onDragMove}
-          onPointerUp={onDragEnd}
-          onPointerCancel={onDragEnd}
           onClick={() => {
-            // A drag that moved the bar must not also toggle the panel.
-            if (dragged.current) {
-              dragged.current = false
-              return
-            }
             setOpen(value => !value)
           }}
         >

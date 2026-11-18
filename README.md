@@ -36,9 +36,19 @@ Only agents that are running are paused. An idle child stays untouched, because 
 
 ## The monitor bar
 
-A second entry, `shell.overlay` id `session-control.monitor`, draws one floating status bar followed by two bulk actions. It floats over the frame in every deployment — a browser tab has no caption row to sit in — and is dragged by its chip.
+A second entry, `shell.overlay` id `session-control.monitor`, draws one bar: the status chip and two bulk actions, plus a drag grip only where it floats.
 
-The default anchor is the golden section of the caption row (61.8% of the width, centred vertically in the 28px strip on Windows); without a caption row the bar sits just below the app header. A dragged position is stored in frame pixels (`dsh.session-control.position`), clamped to the frame on drop and on window resize, and wins over the default anchor; there is no reset control, so clearing that key restores the default. A bar dropped in the lower half opens its panel upward.
+Only the floating deployment draws a surface — the theme's base background with the `l3` hairline border and a shadow, so the bar reads as a panel over the page. The desktop bar draws no fill at all: a filled pill inside the caption row would read as a second piece of window chrome.
+
+Placement depends on the deployment, decided by the `data-platform` marker only the desktop preload writes:
+
+| Deployment                       | Bar                                                                                                          |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Desktop app, Windows             | Anchored in the caption row, centred on the golden section of the window width (61.8%), no grip, not movable |
+| Desktop app, macOS               | Anchored below the title clearance at the same golden section, no grip, not movable                          |
+| Browser tab (no `data-platform`) | Floating at the top, golden section default; only the grip drags it                                          |
+
+A dragged position is stored in frame pixels (`dsh.session-control.position`), clamped to the frame on drop and on window resize, and wins over the floating default; the desktop bar ignores that key and clears nothing, so clearing it restores the browser default. A floating bar dropped in the lower half opens its panel upward. The chip itself is only a button — it opens and closes the panel — so a drag can never be mistaken for a click.
 
 The chip reports the most urgent fact first:
 

@@ -134,3 +134,4 @@ build-tmp/
 .yarn/install-state.gz
 .pnp.*
 
+/lib/

@@ -119,7 +119,7 @@ pnpm test          # host behavior + built-client artifact contract
 pnpm verify        # typecheck + lint + format:check + build + test
 ```
 
-The sources are TypeScript. Type checking resolves the DSH packages through the `paths` table in `tsconfig.json`, which points at the built `lib/types` of the deepseek-harness checkout this plugin lives in. Moving the plugin outside that checkout means depending on the published `@deepseek-ai/*` packages instead.
+The sources are TypeScript. Type checking resolves the DSH packages as ordinary `devDependencies` from the registry, so `pnpm install` alone makes the build work in any checkout — including CI, which has no deepseek-harness tree next to it. The `@deepseek-ai/dsh-*` packages are type-only here: at run time the Host supplies their services through Cordis injection, and the browser half receives `react`, `react/jsx-runtime`, and `@deepseek-ai/dsh-client-ui-primitives` from the shell's platform module table.
 
 Formatting follows the checkout's own style (`.prettierrc.json`: no semicolons, single quotes, 120 columns, `arrowParens: avoid`), so the plugin needs no reformat when it moves between the two trees.
 

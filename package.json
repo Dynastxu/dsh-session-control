@@ -1,0 +1,52 @@
+{
+  "name": "@dynastxu/dsh-session-control",
+  "version": "0.1.0",
+  "description": "Safe pause for a running Session: the composer gains a control that stops the loop before its next model request instead of aborting the step in flight.",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/host.test.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "README.md"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle"
+  ],
+  "author": "Dynastxu <151742029+dynastxu@users.noreply.github.com>",
+  "license": "MIT",
+  "packageManager": "pnpm@12.21.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-primitives"
+      ]
+    }
+  },
+  "devDependencies": {
+    "prettier": "^3.10.1",
+    "typescript": "^6.0.3",
+    "pnpm": "^12.21.0",
+    "eslint": "^10.15.0"
+  }
+}

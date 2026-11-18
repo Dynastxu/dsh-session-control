@@ -57,5 +57,11 @@
     "prettier": "^3.10.1",
     "typescript": "^6.0.3",
     "pnpm": "^12.21.0"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dynastxu/dsh-session-control.git"
+  },
+  "homepage": "https://github.com/Dynastxu/dsh-session-control",
+  "bugs": "https://github.com/Dynastxu/dsh-session-control/issues"
 }

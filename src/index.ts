@@ -49,6 +49,9 @@ const ARGUMENT_OFF = 'off'
 /** Argument that continues the runs a pause stopped. */
 const ARGUMENT_RESUME = 'resume'
 
+/** Argument that reports whether this Agent holds a pause that already fired. */
+const ARGUMENT_STATUS = 'status'
+
 /** The agents one pause covers; members share the record. */
 interface PauseRecord {
   readonly armed: Set<Agent>
@@ -245,8 +248,24 @@ export function apply(ctx: Context): void {
     recordInput: false,
     handler: (invocation): CommandResult => {
       const argument = invocation.rawInput.trim().toLowerCase()
-      if (argument !== '' && argument !== ARGUMENT_OFF && argument !== ARGUMENT_RESUME) {
-        return { kind: 'error', text: `Usage: /${PAUSE_COMMAND} [${ARGUMENT_OFF}|${ARGUMENT_RESUME}]` }
+      if (
+        argument !== '' &&
+        argument !== ARGUMENT_OFF &&
+        argument !== ARGUMENT_RESUME &&
+        argument !== ARGUMENT_STATUS
+      ) {
+        return {
+          kind: 'error',
+          text: `Usage: /${PAUSE_COMMAND} [${ARGUMENT_OFF}|${ARGUMENT_RESUME}|${ARGUMENT_STATUS}]`,
+        }
+      }
+      if (argument === ARGUMENT_STATUS) {
+        // A run that ended on its own never consumed the armed pause, so this
+        // answers which of the two happened; a client mirror cannot tell.
+        const record = members.get(invocation.agent)
+        return record?.stopped.size === undefined || record.stopped.size === 0
+          ? { kind: 'error', text: 'Nothing is paused.' }
+          : { kind: 'success', text: 'Paused.' }
       }
       if (argument === ARGUMENT_OFF) {
         const record = members.get(invocation.agent)

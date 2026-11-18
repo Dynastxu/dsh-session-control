@@ -306,5 +306,24 @@ test('unknown arguments explain the accepted form', () => {
   const host = createHost(tree.all.map(item => item.agent))
   const result = host.invoke(tree.root.agent, 'later')
   assert.equal(result.kind, 'error')
-  assert.match(result.text, /Usage: \/pause \[off\|resume\]/u)
+  assert.match(result.text, /Usage: \/pause \[off\|resume\|status\]/u)
+})
+
+test('/pause status reports a pause that already stopped its run', async () => {
+  const tree = createTree()
+  const host = createHost(tree.all.map(item => item.agent))
+  host.invoke(tree.root.agent)
+  // Armed but not yet at a boundary: nothing stopped, so nothing to continue.
+  assert.equal(host.invoke(tree.root.agent, 'status').kind, 'error')
+  await stopAtBoundary(host, tree.root.agent)
+  assert.equal(host.invoke(tree.root.agent, 'status').kind, 'success')
+})
+
+test('/pause status reports nothing once the pause is resumed', async () => {
+  const tree = createTree()
+  const host = createHost(tree.all.map(item => item.agent))
+  host.invoke(tree.root.agent)
+  await stopAtBoundary(host, tree.root.agent)
+  host.invoke(tree.root.agent, 'resume')
+  assert.equal(host.invoke(tree.root.agent, 'status').kind, 'error')
 })

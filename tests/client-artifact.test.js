@@ -64,6 +64,6 @@ test('the factory exposes the plugin object and requires only platform modules',
     return module
   })
   assert.equal(typeof plugin.apply, 'function')
-  assert.deepEqual([...plugin.inject].sort(), ['locale', 'remote', 'remote.commands', 'slots'])
+  assert.deepEqual([...plugin.inject].sort(), ['locale', 'remote', 'remote.commands', 'slots', 'uiWorkspace'])
   assert.deepEqual([...required].sort(), ['@deepseek-ai/dsh-client-ui-primitives', 'react', 'react/jsx-runtime'])
 })

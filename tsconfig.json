@@ -20,6 +20,7 @@
         "../packages/client/ui-conversation/lib/types/client/index.d.ts"
       ],
       "@deepseek-ai/dsh-client-ui-session/client": ["../packages/client/ui-session/lib/types/client/index.d.ts"],
+      "@deepseek-ai/dsh-client-ui-workspace/client": ["../packages/client/ui-workspace/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-layout/client": ["../packages/client/ui-layout/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-ui-renderer/client": ["../packages/client/ui-renderer/lib/types/client/index.d.ts"],
       "@deepseek-ai/dsh-client-locale/client": ["../packages/client/locale/lib/types/client/index.d.ts"],

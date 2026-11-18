@@ -34,9 +34,11 @@ The notice is recorded as a context row from the `session-control` source, so th
 
 Only agents that are running are paused. An idle child stays untouched, because arming it would stop its next turn — including a message the user had just sent.
 
-## Title-bar monitor
+## The monitor bar
 
-A second entry, `shell.overlay` id `session-control.monitor`, draws a status chip in the desktop title bar at three quarters of the window width, followed by two bulk actions.
+A second entry, `shell.overlay` id `session-control.monitor`, draws one floating status bar followed by two bulk actions. It floats over the frame in every deployment — a browser tab has no caption row to sit in — and is dragged by its chip.
+
+The default anchor is the golden section of the caption row (61.8% of the width, centred vertically in the 28px strip on Windows); without a caption row the bar sits just below the app header. A dragged position is stored in frame pixels (`dsh.session-control.position`), clamped to the frame on drop and on window resize, and wins over the default anchor; there is no reset control, so clearing that key restores the default. A bar dropped in the lower half opens its panel upward.
 
 The chip reports the most urgent fact first:
 
@@ -46,13 +48,19 @@ The chip reports the most urgent fact first:
 | None running, some finished and unviewed | Green done dot + `n 个未查看的对话` |
 | Neither                                  | `没有需要关注的对话`, no icon       |
 
-Opening the chip lists the running conversations and then the finished-but-unviewed ones. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action. The panel is capped at 60vh (and 420px) and scrolls.
+Opening the chip lists the running conversations and then the finished-but-unviewed ones. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action; clicking the title opens that conversation. The panel is capped at 60vh (and 420px) and scrolls.
 
-Bulk actions run over every conversation at once: pause-all (which becomes continue-all once every running conversation already has a pause), and stop-all. Stop is the Session controller's own cancellation: the turn ends as a stopped user turn and queued input is kept.
+Bulk actions run over every conversation at once: pause-all (which becomes continue-all once every running conversation already holds a pause), and stop-all. Continue-all covers every Session that holds a pause phase, including the ones a pause already stopped — a stopped Session is not running, so a continue restricted to running rows could never resume it. Stop is the Session controller's own cancellation: the turn ends as a stopped user turn and queued input is kept. Stop is styled as the danger action.
 
-Elapsed time counts from when this page observed the run start, or from the moment the run stopped for a finished conversation. A run already in flight when the page loaded counts from zero.
+The pause glyph is bare bars and the continue glyph a bare triangle, matching the send and stop circles beside the composer rather than the ringed pause artwork.
 
-The monitor covers top-level conversations; subagent Sessions are left to the conversation they belong to. It keeps its pause bookkeeping in a client store shared with the composer button, and the monitor — which sees every Session — is the single writer of those transitions.
+Elapsed time is the observed run span, persisted in `localStorage` (`dsh.session-control.timings`), so a page or plugin reload keeps counting the same run instead of restarting it. A running conversation counts from the moment this browser first saw the run start; a finished one shows the frozen span that run took — the time it consumed — rather than how long ago it stopped. A run that both started and ended while this browser was not watching has no span and renders `—` instead of a guess; a span is only closed when this page saw the run running, so a restart cannot invent one.
+
+The monitor covers top-level conversations; subagent Sessions are left to the conversation they belong to. It keeps its pause bookkeeping in a client observable shared with the composer button, and the monitor — which sees every Session — is the single writer of those transitions.
+
+A pause armed during a model's last step can lose the race: the run finishes before the request boundary is reached, so nothing stops. The client cannot tell that apart from a pause that fired, so when an armed run ends the monitor asks the Host (`/pause status`) and keeps the continue action only if a stopped pause is really held.
+
+Stopped phases are persisted in `localStorage` (`dsh.session-control.pauses`), so a page reload still offers the continue action. An armed pause belongs to a run in flight and is not persisted; after a reload the user re-arms it.
 
 ## The `/pause` command
 
@@ -61,12 +69,13 @@ The button drives the same user-facing command, which can also be typed:
 - `/pause` arms a pause across the running delegation subtree. It is idempotent and refused while no run is active.
 - `/pause off` cancels an armed pause before it fires.
 - `/pause resume` continues every run the pause stopped; it is refused when no pause is waiting.
+- `/pause status` answers whether this Agent still holds a pause that stopped its run, which is how the monitor detects a pause the model's last step overtook.
 
 ## The control
 
 It occupies `conversation.input.activity`, the composer's single compact seat between the model selector and the stop/send action, and renders nothing while there is neither a run nor a pause to continue.
 
-It reuses the composer's own geometry and materials: a 34px circle on the row's -2px optical seat, neutral selector fill while nothing is requested, and the primary action's info fill once the pause is engaged. Glyphs are the shared `IconPauseOutlineRegular` and `IconPlayOutlineRegular` from the client primitives. Both themes come from the same `--dsw-*` tokens the composer already uses.
+It reuses the composer's own geometry and materials: a 34px circle on the row's -2px optical seat, neutral selector fill while nothing is requested, and the primary action's info fill once the pause is engaged. Its glyphs are the bare pause bars and the shared filled triangle from the client primitives. Both themes come from the same `--dsw-*` tokens the composer already uses.
 
 ## Files
 
@@ -85,7 +94,6 @@ It reuses the composer's own geometry and materials: a 34px circle on the row's 
 - Pausing a one-shot subagent stops it inside the parent's tool call. The parent blocks in that step until the subagent is resumed, because the parent cannot reach its own boundary while the call is outstanding.
 - The parent notice names agents by Session id. Display names live in the subagent catalog, which needs an asynchronous catalog read on the pause path.
 - `conversation.input.activity` holds one occupant. Enabling the experimental voice-input plugin, which also registers there, replaces this control.
-- The monitor shows only inside the Windows caption row (`html[data-windows-titlebar]`). A browser tab or a macOS window has no such row, so the chip stays hidden there while its pause bookkeeping keeps running.
 - The monitor's pause phases are client state, shared with the composer button and lost on reload; the Host stays authoritative and refuses a continue whose pause it no longer holds.
 
 ## Development

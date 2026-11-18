@@ -20,10 +20,12 @@
 import * as React from 'react'
 import {
   IconDragHandleOutlineRegular,
+  IconSettingsOutlineRegular,
   IconStopFillRegular,
   IconTriangleRightFillRegular,
   IconWarningOutlineRegular,
   StateDot,
+  Switch,
   Toast,
   Tooltip,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -64,6 +66,8 @@ const zh = {
   'monitor.failed': '操作失败',
   'monitor.runningHeading': '正在运行',
   'monitor.unreadHeading': '已完成，未查看',
+  'monitor.settings': '显示设置',
+  'monitor.glass': '毛玻璃效果',
 } satisfies Record<string, string>
 
 type SessionControlKey = keyof typeof zh
@@ -87,6 +91,8 @@ const en: Record<SessionControlKey, string> = {
   'monitor.failed': 'The action failed',
   'monitor.runningHeading': 'Running',
   'monitor.unreadHeading': 'Finished, unviewed',
+  'monitor.settings': 'Display settings',
+  'monitor.glass': 'Frosted glass',
 }
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
@@ -187,6 +193,10 @@ const STYLES = `
    in the caption row, where a fill would read as a second window chrome. */
 .dsh-session-control-monitor[data-floating]{background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 6px 18px rgba(0,0,0,.16)}
 .dsh-session-control-monitor[data-placed]{left:0;transform:none}
+.dsh-session-control-monitor[data-floating][data-glass]{background:color-mix(in srgb, var(--dsw-alias-bg-base) 55%, transparent);backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+.dsh-session-control-settings{position:absolute;top:calc(100% + 6px);right:0;display:flex;align-items:center;gap:12px;padding:8px 10px;border-radius:10px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l3);box-shadow:0 10px 30px var(--dsw-alias-shadow, rgba(0,0,0,.18));color:var(--dsw-alias-label-primary);font-size:13px;white-space:nowrap}
+.dsh-session-control-monitor[data-glass] .dsh-session-control-settings{background:color-mix(in srgb, var(--dsw-alias-bg-base) 78%, transparent);backdrop-filter:blur(18px) saturate(1.8);-webkit-backdrop-filter:blur(18px) saturate(1.8)}
+.dsh-session-control-monitor[data-flip] .dsh-session-control-settings{top:auto;bottom:calc(100% + 6px)}
 html[data-platform='darwin'] .dsh-session-control-monitor{top:calc(var(--dsh-frame-top-clearance, 48px) + 6px)}
 .dsh-session-control-monitor[data-flip] .dsh-session-control-panel{top:auto;bottom:calc(100% + 6px)}
 html[data-windows-titlebar] .dsh-session-control-monitor{top:calc((var(--dsh-windows-titlebar-height, 40px) - 30px) / 2)}
@@ -407,6 +417,35 @@ function writeStoredPosition(position: BarPosition | null): void {
   }
 }
 
+/** Where the frosted-glass preference survives a reload. */
+const GLASS_STORAGE_KEY = 'dsh.session-control.glass'
+
+/**
+ * Read the frosted-glass preference.
+ * @returns whether the floating bar blurs what it covers; on unless turned off.
+ */
+function readStoredGlass(): boolean {
+  if (typeof localStorage === 'undefined') return true
+  try {
+    return localStorage.getItem(GLASS_STORAGE_KEY) !== 'off'
+  } catch (_error: unknown) {
+    // Unreadable storage keeps the default surface.
+    return true
+  }
+}
+
+/**
+ * @param glass - whether the floating bar draws the frosted surface.
+ */
+function writeStoredGlass(glass: boolean): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.setItem(GLASS_STORAGE_KEY, glass ? 'on' : 'off')
+  } catch (_error: unknown) {
+    // A full or unavailable store keeps the choice for this page's lifetime.
+  }
+}
+
 /**
  * Bare pause glyph: the two rounded bars at the weight the composer's send and
  * stop circles use. The shared pause artwork draws a ring around the bars,
@@ -596,6 +635,8 @@ function SessionMonitor({
   t,
 }: MonitorProps): React.ReactElement {
   const [open, setOpen] = React.useState(false)
+  const [settingsOpen, setSettingsOpen] = React.useState(false)
+  const [glass, setGlass] = React.useState(() => readStoredGlass())
   const [now, setNow] = React.useState(() => Date.now())
   const [failure, setFailure] = React.useState<{ seq: number; text: string } | null>(null)
   const [pending, setPending] = React.useState(false)
@@ -712,12 +753,17 @@ function SessionMonitor({
   }, [open])
 
   React.useEffect(() => {
-    if (!open) return
+    if (!open && !settingsOpen) return
     const onPointerDown = (event: PointerEvent): void => {
-      if (root.current !== null && !root.current.contains(event.target as Node)) setOpen(false)
+      if (root.current !== null && !root.current.contains(event.target as Node)) {
+        setOpen(false)
+        setSettingsOpen(false)
+      }
     }
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setOpen(false)
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      setSettingsOpen(false)
     }
     document.addEventListener('pointerdown', onPointerDown, true)
     document.addEventListener('keydown', onKeyDown)
@@ -725,7 +771,7 @@ function SessionMonitor({
       document.removeEventListener('pointerdown', onPointerDown, true)
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [open])
+  }, [open, settingsOpen])
 
   // Only a deployment without a caption row floats the bar, and only the grip
   // drags it: the gesture is captured on the grip, remembers where the bar was
@@ -901,6 +947,7 @@ function SessionMonitor({
       ref={root}
       className={MONITOR_CLASS}
       data-floating={floating || undefined}
+      data-glass={floating && glass ? true : undefined}
       data-flip={flip || undefined}
       data-placed={position === null ? undefined : true}
       style={position === null ? undefined : { left: position.x, top: position.y }}
@@ -964,6 +1011,37 @@ function SessionMonitor({
           <IconStopFillRegular size={12} />
         </button>
       </Tooltip>
+      {floating ? (
+        <>
+          <Tooltip label={t('monitor.settings')} side="bottom" delayMs={500} portal>
+            <button
+              type="button"
+              className="dsh-session-control-action"
+              aria-label={t('monitor.settings')}
+              aria-expanded={settingsOpen}
+              onClick={() => {
+                setSettingsOpen(value => !value)
+                setOpen(false)
+              }}
+            >
+              <IconSettingsOutlineRegular size={16} />
+            </button>
+          </Tooltip>
+          {settingsOpen ? (
+            <div className="dsh-session-control-settings" role="group" aria-label={t('monitor.settings')}>
+              <span>{t('monitor.glass')}</span>
+              <Switch
+                checked={glass}
+                label={t('monitor.glass')}
+                onChange={next => {
+                  setGlass(next)
+                  writeStoredGlass(next)
+                }}
+              />
+            </div>
+          ) : null}
+        </>
+      ) : null}
       {open ? (
         <div className="dsh-session-control-panel" role="dialog" aria-label={t('monitor.expand')}>
           {runningRows.length === 0 && unreadRows.length === 0 ? (

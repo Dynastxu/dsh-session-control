@@ -40,6 +40,8 @@ A second entry, `shell.overlay` id `session-control.monitor`, draws one bar: the
 
 Only the floating deployment draws a surface — the theme's base background with the `l3` hairline border and a shadow, so the bar reads as a panel over the page. The desktop bar draws no fill at all: a filled pill inside the caption row would read as a second piece of window chrome.
 
+The floating bar also carries a gear button that opens one display setting: frosted glass (`毛玻璃效果`), on by default. On, the surface is the theme base at 72% with `backdrop-filter: blur(14px) saturate(1.6)`; off, it is the opaque base. The choice is stored in `dsh.session-control.glass` and applies to the bar and its popovers.
+
 Placement depends on the deployment, decided by the `data-platform` marker only the desktop preload writes:
 
 | Deployment                       | Bar                                                                                                          |

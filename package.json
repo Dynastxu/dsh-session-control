@@ -2,42 +2,79 @@
   "name": "@dynastxu/dsh-session-control",
   "version": "0.2.0",
   "description": "Session control: safe pause for a running Session and its subagents, plus a title-bar or floating status bar that pauses, continues, or stops the running and unviewed conversations.",
-  "type": "module",
-  "scripts": {
-    "build": "node scripts/build.mjs",
-    "typecheck": "tsc -p tsconfig.host.json --noEmit && tsc -p tsconfig.client.json --noEmit",
-    "lint": "oxlint src tests scripts",
-    "lint:fix": "oxlint src tests scripts --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "node tests/host.test.js && node tests/client-artifact.test.js",
-    "verify": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm build && pnpm test",
-    "prepare": "node scripts/build.mjs"
-  },
-  "exports": {
-    ".": "./lib/index.js",
-    "./client": "./lib/client.js",
-    "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+  "keywords": [
+    "dsh",
+    "dsh-bundle",
+    "dsh-plugin"
+  ],
+  "homepage": "https://github.com/Dynastxu/dsh-session-control",
+  "bugs": "https://github.com/Dynastxu/dsh-session-control/issues",
+  "license": "MIT",
+  "author": "Dynastxu <151742029+dynastxu@users.noreply.github.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dynastxu/dsh-session-control.git"
   },
   "files": [
     "lib",
     "cordis.patch.yml",
-    "locale/*.json",
+    "locale",
     "icon.svg",
     "README.md"
   ],
-  "keywords": [
-    "dsh",
-    "dsh-plugin",
-    "dsh-bundle"
-  ],
-  "author": "Dynastxu <151742029+dynastxu@users.noreply.github.com>",
-  "license": "MIT",
-  "packageManager": "pnpm@12.21.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
   "publishConfig": {
     "access": "public"
   },
+  "scripts": {
+    "build": "vite build && vite build --config vite.client.config.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm build && pnpm test"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.1.0",
+    "@deepseek-ai/dsh-agent": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-api-remotes": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-api-session-controller": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-locale": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-store": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-renderer": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-session": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-client-ui-workspace": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-commands": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-llm": "^0.2.2-rc.5",
+    "@deepseek-ai/dsh-session": "^0.2.2-rc.5",
+    "@types/node": "^24.19.2",
+    "@types/react": "^18.3.31",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.81.0",
+    "pnpm": "^12.21.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1"
+  },
+  "engines": {
+    "dsh": ">=0.2.2-rc.5",
+    "node": ">=22.19.0"
+  },
+  "packageManager": "pnpm@12.21.0",
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -51,35 +88,5 @@
         "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
-  },
-  "devDependencies": {
-    "@deepseek-ai/cordis": "^4.1.0",
-    "@deepseek-ai/dsh-agent": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-api-remotes": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-api-session-controller": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-locale": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-store": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-conversation": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-layout": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-primitives": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-renderer": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-session": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-client-ui-workspace": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-commands": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-llm": "^0.2.2-rc.3",
-    "@deepseek-ai/dsh-session": "^0.2.2-rc.3",
-    "@types/node": "^24.19.2",
-    "@types/react": "~18.3.1",
-    "oxlint": "^1.81.0",
-    "pnpm": "^12.21.0",
-    "prettier": "^3.10.1",
-    "typescript": "^6.0.3"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Dynastxu/dsh-session-control.git"
-  },
-  "homepage": "https://github.com/Dynastxu/dsh-session-control",
-  "bugs": "https://github.com/Dynastxu/dsh-session-control/issues"
+  }
 }

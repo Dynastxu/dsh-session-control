@@ -94,9 +94,8 @@ It reuses the composer's own geometry and materials: a 34px circle on the row's 
 | File                            | Role                                                                                                                               |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `src/index.ts`                  | Host half: the delegation-tree walk, the `agent/pre-step` gate, the parent notice, and the `/pause` command with its continuation. |
-| `src/client.tsx`                | Browser half: the composer pause entry, the title-bar monitor, their styles and dictionaries, and the Remote calls.                |
-| `lib/index.js`, `lib/client.js` | Built artifacts the Loader and the Web shell load (committed; regenerate with `pnpm build`).                                       |
-| `scripts/build.mjs`             | Compiles the Host half with tsc and wraps the single-file client bundle in the module-loader factory.                              |
+| `src/client/index.tsx`          | Browser half: the composer pause entry, the title-bar monitor, their styles and dictionaries, and the Remote calls.                |
+| `lib/index.js`, `lib/client.js` | Built artifacts the Loader and the Web shell load (not tracked; regenerate with `pnpm build`).                                     |
 | `cordis.patch.yml`              | Bundle patch inserting the Host row.                                                                                               |
 | `locale/*.json`                 | Plugin display title and description.                                                                                              |
 
@@ -111,18 +110,20 @@ It reuses the composer's own geometry and materials: a 34px circle on the row's 
 ## Development
 
 ```sh
-pnpm build         # tsc → lib/index.js, then wrap the client bundle → lib/client.js
-pnpm typecheck     # both compiler faces, no emit
-pnpm lint          # oxlint over src, tests, and scripts
-pnpm format        # prettier --write .
+pnpm build         # vite: the Host entry → lib/index.js, then the Client entry → lib/client.js
+pnpm typecheck     # tsc over src, test, and the build configs
+pnpm lint          # oxlint .
+pnpm format        # oxfmt .
 pnpm test          # host behavior + built-client artifact contract
-pnpm verify        # typecheck + lint + format:check + build + test
+pnpm check         # typecheck + lint + format:check + build + test
 ```
 
-The sources are TypeScript. Type checking resolves the DSH packages as ordinary `devDependencies` from the registry, so `pnpm install` alone makes the build work in any checkout — including CI, which has no deepseek-harness tree next to it. The `@deepseek-ai/dsh-*` packages are type-only here: at run time the Host supplies their services through Cordis injection, and the browser half receives `react`, `react/jsx-runtime`, and `@deepseek-ai/dsh-client-ui-primitives` from the shell's platform module table.
+The sources are TypeScript. Type checking resolves the DSH packages as ordinary `devDependencies` from the registry, so `pnpm install` alone makes the build work in any checkout — including CI, which has no deepseek-harness tree next to it. The `@deepseek-ai/dsh-*` packages are type-only here: at run time the Host supplies their services through Cordis injection, and the browser half receives `react` and `@deepseek-ai/dsh-client-ui-primitives` from the shell's platform module table.
 
-Formatting follows the checkout's own style (`.prettierrc.json`: no semicolons, single quotes, 120 columns, `arrowParens: avoid`), so the plugin needs no reformat when it moves between the two trees.
+Both halves are built by Vite. `vite.config.ts` bundles the Host entry into one ESM file with Node builtins external; `vite.client.config.ts` bundles the Client entry into one standalone ES file. The Client source registers the shell's module-loader factory itself, so its only statement at file scope is that registration: React and the primitives arrive through the factory's `require`, the classic JSX runtime keeps `React.createElement` bound to that same `require("react")`, and every constant and component lives inside the factory closure because the shell concatenates plugin bundles into shared scripts. That is why no wrapper script is needed.
 
-Linting is oxlint, the linter the checkout itself uses, because it parses TypeScript without a separate parser package. The plugin carries its own `.oxlintrc.json`: the checkout's config ignores `**/*.js` and `**/*.mjs` and applies its strict rule set only to `packages/*/*` paths, so inheriting it here would have linted almost nothing. ESLint is not used: ESLint 10 cannot parse `.ts` without `typescript-eslint`, which is not installed, and installing it in this checkout came back blocked by the sandbox (pnpm's store operation lock lives outside the workspace). To switch to ESLint, pin `eslint@^9` with `typescript-eslint` and point the `lint` script at it.
+Formatting is oxfmt, the formatter the checkout's own toolchain uses: `.oxfmtrc.json` only lists ignored paths, so the sources follow oxfmt's defaults. `format:check` runs in CI, so a change that is not formatted fails the build.
 
-The client half is deliberately one module: the shell materializes a plugin as a single `factory(require)` bundle, so a single-file source keeps the build to `tsc` with no bundler. `react`, `react/jsx-runtime`, and `@deepseek-ai/dsh-client-ui-primitives` stay external — they come from the shell's platform module table.
+Linting is oxlint, the linter the checkout itself uses, because it parses TypeScript without a separate parser package. The plugin carries its own `.oxlintrc.json`: the checkout's config ignores `**/*.js` and `**/*.mjs` and applies its strict rule set only to `packages/*/*` paths, so inheriting it here would have linted almost nothing.
+
+Tests are Vitest files under `test/`. The Host cases import `src/index.ts` directly and drive it through a Cordis-shaped context; the artifact case evaluates the built `lib/client.js` against the module-loader contract, so `check` builds before it tests. The worker-thread pool is required because the DSH file sandbox blocks the piped child processes the default fork pool spawns.

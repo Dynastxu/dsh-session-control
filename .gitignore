@@ -125,7 +125,10 @@ dist
 # Editor and agent scratch state
 .idea/
 .tmp/
-build-tmp/
+
+# Sandbox-local package manager state
+.pnpm-store/
+.pnpm-home/
 
 # yarn v2
 .yarn/cache

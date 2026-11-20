@@ -19,43 +19,43 @@
  * @module @dynastxu/dsh-session-control
  */
 
-import { randomUUID } from 'node:crypto'
-import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
-import type { CommandResult } from '@deepseek-ai/dsh-commands'
-import type { ContentBlock, ContextFormed, MessageId, UserMessage } from '@deepseek-ai/dsh-llm'
-import type { SessionId } from '@deepseek-ai/dsh-session'
+import { randomUUID } from "node:crypto";
+import type { Context } from "@deepseek-ai/cordis";
+import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
+import type { CommandResult } from "@deepseek-ai/dsh-commands";
+import type { ContentBlock, ContextFormed, MessageId, UserMessage } from "@deepseek-ai/dsh-llm";
+import type { SessionId } from "@deepseek-ai/dsh-session";
 // Type-only: the `retry` message source this plugin submits arrives with the
 // Session controller's source declaration.
-import type { SessionRequestId } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SessionRequestId } from "@deepseek-ai/dsh-api-session-controller/types";
 
-declare module '@deepseek-ai/dsh-llm' {
+declare module "@deepseek-ai/dsh-llm" {
   interface MessageSourceMap {
     /** Runtime context this plugin injects into a paused agent's parent. */
-    'session-control': { kind: 'session-control' } & ContextFormed
+    "session-control": { kind: "session-control" } & ContextFormed;
   }
 }
 
-export const name = 'session-control'
+export const name = "session-control";
 
-export const inject = ['agents', 'commands'] as const
+export const inject = ["agents", "commands"] as const;
 
 /** Command name the composer control invokes. */
-export const PAUSE_COMMAND = 'pause'
+export const PAUSE_COMMAND = "pause";
 
 /** Argument that cancels an armed pause. */
-const ARGUMENT_OFF = 'off'
+const ARGUMENT_OFF = "off";
 
 /** Argument that continues the runs a pause stopped. */
-const ARGUMENT_RESUME = 'resume'
+const ARGUMENT_RESUME = "resume";
 
 /** Argument that reports whether this Agent holds a pause that already fired. */
-const ARGUMENT_STATUS = 'status'
+const ARGUMENT_STATUS = "status";
 
 /** The agents one pause covers; members share the record. */
 interface PauseRecord {
-  readonly armed: Set<Agent>
-  readonly stopped: Set<Agent>
+  readonly armed: Set<Agent>;
+  readonly stopped: Set<Agent>;
 }
 
 /**
@@ -66,13 +66,13 @@ interface PauseRecord {
  * @param source - producer source declared by this plugin or the Session controller.
  * @returns an identified user message.
  */
-function userMessage(content: readonly ContentBlock[], source: UserMessage['source']): UserMessage {
-  return { id: randomUUID() as MessageId, role: 'user', content, source }
+function userMessage(content: readonly ContentBlock[], source: UserMessage["source"]): UserMessage {
+  return { id: randomUUID() as MessageId, role: "user", content, source };
 }
 
 /** The empty continuation receipt that wakes a stopped run; it adds no instruction. */
 function continuationMessage(): UserMessage {
-  return userMessage([], { kind: 'retry', rpcId: randomUUID() as SessionRequestId })
+  return userMessage([], { kind: "retry", rpcId: randomUUID() as SessionRequestId });
 }
 
 /**
@@ -81,17 +81,18 @@ function continuationMessage(): UserMessage {
  * @returns a context-form user message for the parent agent.
  */
 function pausedNotice(stopped: readonly Agent[]): UserMessage {
-  const ids = stopped.map(agent => String(agent.id)).join(', ')
-  const summary = stopped.length === 1 ? 'User paused 1 agent' : `User paused ${String(stopped.length)} agents`
+  const ids = stopped.map((agent) => String(agent.id)).join(", ");
+  const summary =
+    stopped.length === 1 ? "User paused 1 agent" : `User paused ${String(stopped.length)} agents`;
   return userMessage(
     [
       {
-        type: 'text',
+        type: "text",
         text: `${summary} before their next model request: ${ids}. They produce no result until the user resumes them; do not wait for them or re-delegate their work.`,
       },
     ],
-    { kind: 'session-control', form: 'notice', summary },
-  )
+    { kind: "session-control", form: "notice", summary },
+  );
 }
 
 /**
@@ -102,26 +103,26 @@ function pausedNotice(stopped: readonly Agent[]): UserMessage {
  * @returns descendants in parent-before-child order, excluding the root.
  */
 function descendantsOf(agents: readonly Agent[], root: Agent): Agent[] {
-  const children = new Map<SessionId, Agent[]>()
+  const children = new Map<SessionId, Agent[]>();
   for (const agent of agents) {
-    const header = agent.session.header
-    if (header.origin !== 'subagent' || header.parentSession === undefined) continue
-    const siblings = children.get(header.parentSession) ?? []
-    siblings.push(agent)
-    children.set(header.parentSession, siblings)
+    const header = agent.session.header;
+    if (header.origin !== "subagent" || header.parentSession === undefined) continue;
+    const siblings = children.get(header.parentSession) ?? [];
+    siblings.push(agent);
+    children.set(header.parentSession, siblings);
   }
-  const found: Agent[] = []
-  const seen = new Set<SessionId>([root.id])
-  const queue: SessionId[] = [root.id]
+  const found: Agent[] = [];
+  const seen = new Set<SessionId>([root.id]);
+  const queue: SessionId[] = [root.id];
   for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
     for (const child of children.get(id) ?? []) {
-      if (seen.has(child.id)) continue
-      seen.add(child.id)
-      found.push(child)
-      queue.push(child.id)
+      if (seen.has(child.id)) continue;
+      seen.add(child.id);
+      found.push(child);
+      queue.push(child.id);
     }
   }
-  return found
+  return found;
 }
 
 /**
@@ -131,7 +132,7 @@ function descendantsOf(agents: readonly Agent[], root: Agent): Agent[] {
  */
 export function apply(ctx: Context): void {
   /** Agent -> the pause it belongs to; members of one pause share the record. */
-  const members = new WeakMap<Agent, PauseRecord>()
+  const members = new WeakMap<Agent, PauseRecord>();
 
   /**
    * Release one member from its pause.
@@ -139,9 +140,9 @@ export function apply(ctx: Context): void {
    * @param record - the pause record that agent belongs to.
    */
   function release(agent: Agent, record: PauseRecord): void {
-    record.armed.delete(agent)
-    record.stopped.delete(agent)
-    if (members.get(agent) === record) members.delete(agent)
+    record.armed.delete(agent);
+    record.stopped.delete(agent);
+    if (members.get(agent) === record) members.delete(agent);
   }
 
   /**
@@ -150,45 +151,45 @@ export function apply(ctx: Context): void {
    */
   function forget(record: PauseRecord): void {
     for (const agent of [...record.armed, ...record.stopped]) {
-      if (members.get(agent) === record) members.delete(agent)
+      if (members.get(agent) === record) members.delete(agent);
     }
-    record.armed.clear()
-    record.stopped.clear()
+    record.armed.clear();
+    record.stopped.clear();
   }
 
   // A pause record belongs to one stopped run. An armed member that never
   // reached its boundary is spent when its run ends, and any member is spent
   // when its next run starts.
-  ctx.on('agent/status', ({ agent, status }) => {
-    const record = members.get(agent)
-    if (record === undefined) return
-    if (status === 'running' || !record.stopped.has(agent)) release(agent, record)
-  })
-  ctx.on('agent/disposed', ({ agent }) => {
-    const record = members.get(agent)
-    if (record !== undefined) release(agent, record)
-  })
+  ctx.on("agent/status", ({ agent, status }) => {
+    const record = members.get(agent);
+    if (record === undefined) return;
+    if (status === "running" || !record.stopped.has(agent)) release(agent, record);
+  });
+  ctx.on("agent/disposed", ({ agent }) => {
+    const record = members.get(agent);
+    if (record !== undefined) release(agent, record);
+  });
 
-  ctx.on('agent/pre-step', (payload, next): Promise<PreStepDecision> => {
-    const record = members.get(payload.agent)
-    if (record === undefined || !record.armed.has(payload.agent)) return next()
-    record.armed.delete(payload.agent)
-    record.stopped.add(payload.agent)
+  ctx.on("agent/pre-step", (payload, next): Promise<PreStepDecision> => {
+    const record = members.get(payload.agent);
+    if (record === undefined || !record.armed.has(payload.agent)) return next();
+    record.armed.delete(payload.agent);
+    record.stopped.add(payload.agent);
     // The loop claimed this batch for the step it now stops. Put it back so a
     // pause holds queued input for the next turn rather than discarding it.
     if (payload.messages.length > 0) {
       try {
-        payload.agent.inbox.splice('next-step', 0, 0, [...payload.messages])
+        payload.agent.inbox.splice("next-step", 0, 0, [...payload.messages]);
       } catch (error: unknown) {
-        ctx.logger.warn('session-control: could not return the paused batch to the inbox', error)
+        ctx.logger.warn("session-control: could not return the paused batch to the inbox", error);
       }
     }
     // Cancellation records the user stop the conversation already shows. The
     // rejection is the fallback for a turn that is no longer cancellable:
     // either way no model request leaves.
-    payload.agent.cancel({ kind: 'user' }, { keepInbox: true })
-    return Promise.resolve({ kind: 'reject' })
-  })
+    payload.agent.cancel({ kind: "user" }, { keepInbox: true });
+    return Promise.resolve({ kind: "reject" });
+  });
 
   /**
    * Arm one pause across the addressed Agent and its running descendants.
@@ -198,28 +199,31 @@ export function apply(ctx: Context): void {
   function arm(agent: Agent): CommandResult {
     // Arming while idle would stop the next turn's own first step, including a
     // message the user had just sent.
-    if (agent.status !== 'running') {
-      return { kind: 'error', text: 'No run is active, so there is no next request to pause before.' }
+    if (agent.status !== "running") {
+      return {
+        kind: "error",
+        text: "No run is active, so there is no next request to pause before.",
+      };
     }
-    if (members.has(agent)) return { kind: 'success', text: 'Pause already armed.' }
-    const record: PauseRecord = { armed: new Set([agent]), stopped: new Set() }
+    if (members.has(agent)) return { kind: "success", text: "Pause already armed." };
+    const record: PauseRecord = { armed: new Set([agent]), stopped: new Set() };
     for (const child of descendantsOf(ctx.agents.list(), agent)) {
-      if (child.status === 'running') record.armed.add(child)
+      if (child.status === "running") record.armed.add(child);
     }
-    for (const member of record.armed) members.set(member, record)
-    const header = agent.session.header
+    for (const member of record.armed) members.set(member, record);
+    const header = agent.session.header;
     const parent =
-      header.origin === 'subagent' && header.parentSession !== undefined
+      header.origin === "subagent" && header.parentSession !== undefined
         ? ctx.agents.get(header.parentSession)
-        : undefined
-    parent?.inject(pausedNotice([...record.armed]))
+        : undefined;
+    parent?.inject(pausedNotice([...record.armed]));
     return {
-      kind: 'success',
+      kind: "success",
       text:
         record.armed.size === 1
-          ? 'Pause armed: the run stops before its next model request.'
+          ? "Pause armed: the run stops before its next model request."
           : `Pause armed for ${String(record.armed.size)} running agents: each run stops before its next model request.`,
-    }
+    };
   }
 
   /**
@@ -228,52 +232,52 @@ export function apply(ctx: Context): void {
    * @returns the command outcome.
    */
   function resume(agent: Agent): CommandResult {
-    const record = members.get(agent)
-    if (record === undefined) return { kind: 'error', text: 'Nothing is paused.' }
-    const stopped = [...record.stopped]
-    forget(record)
-    for (const target of stopped) target.followup(continuationMessage())
+    const record = members.get(agent);
+    if (record === undefined) return { kind: "error", text: "Nothing is paused." };
+    const stopped = [...record.stopped];
+    forget(record);
+    for (const target of stopped) target.followup(continuationMessage());
     return {
-      kind: 'success',
+      kind: "success",
       text:
         stopped.length === 0
-          ? 'Pause canceled.'
-          : `Resumed ${String(stopped.length)} paused ${stopped.length === 1 ? 'run' : 'runs'}.`,
-    }
+          ? "Pause canceled."
+          : `Resumed ${String(stopped.length)} paused ${stopped.length === 1 ? "run" : "runs"}.`,
+    };
   }
 
   ctx.commands.register({
     name: PAUSE_COMMAND,
-    description: 'Pause the run before its next model request, or continue it',
+    description: "Pause the run before its next model request, or continue it",
     recordInput: false,
     handler: (invocation): CommandResult => {
-      const argument = invocation.rawInput.trim().toLowerCase()
+      const argument = invocation.rawInput.trim().toLowerCase();
       if (
-        argument !== '' &&
+        argument !== "" &&
         argument !== ARGUMENT_OFF &&
         argument !== ARGUMENT_RESUME &&
         argument !== ARGUMENT_STATUS
       ) {
         return {
-          kind: 'error',
+          kind: "error",
           text: `Usage: /${PAUSE_COMMAND} [${ARGUMENT_OFF}|${ARGUMENT_RESUME}|${ARGUMENT_STATUS}]`,
-        }
+        };
       }
       if (argument === ARGUMENT_STATUS) {
         // A run that ended on its own never consumed the armed pause, so this
         // answers which of the two happened; a client mirror cannot tell.
-        const record = members.get(invocation.agent)
+        const record = members.get(invocation.agent);
         return record?.stopped.size === undefined || record.stopped.size === 0
-          ? { kind: 'error', text: 'Nothing is paused.' }
-          : { kind: 'success', text: 'Paused.' }
+          ? { kind: "error", text: "Nothing is paused." }
+          : { kind: "success", text: "Paused." };
       }
       if (argument === ARGUMENT_OFF) {
-        const record = members.get(invocation.agent)
-        if (record !== undefined) forget(record)
-        return { kind: 'success', text: 'Pause canceled.' }
+        const record = members.get(invocation.agent);
+        if (record !== undefined) forget(record);
+        return { kind: "success", text: "Pause canceled." };
       }
-      if (argument === ARGUMENT_RESUME) return resume(invocation.agent)
-      return arm(invocation.agent)
+      if (argument === ARGUMENT_RESUME) return resume(invocation.agent);
+      return arm(invocation.agent);
     },
-  })
+  });
 }

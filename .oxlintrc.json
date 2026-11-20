@@ -8,7 +8,7 @@
   "options": {
     "reportUnusedDisableDirectives": "warn"
   },
-  "ignorePatterns": ["lib/**", "build-tmp/**", "node_modules/**", ".pnpm-store/**", ".pnpm-home/**"],
+  "ignorePatterns": ["lib/**", "node_modules/**", ".pnpm-store/**", ".pnpm-home/**"],
   "rules": {
     "no-var": "error",
     "prefer-const": "error",
@@ -28,12 +28,16 @@
   },
   "overrides": [
     {
-      "files": ["tests/**/*.js", "scripts/**/*.mjs"],
+      "files": ["test/**/*.ts", "*.config.ts"],
       "env": { "node": true }
     },
     {
-      "files": ["src/**/*.ts", "src/**/*.tsx"],
-      "env": { "browser": false }
+      "files": ["src/index.ts"],
+      "env": { "node": true }
+    },
+    {
+      "files": ["src/client/**/*.tsx"],
+      "env": { "browser": true }
     }
   ]
 }

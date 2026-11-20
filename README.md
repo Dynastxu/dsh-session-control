@@ -1,5 +1,7 @@
 # Session control
 
+English | [中文](README.zh.md)
+
 Session control for DeepSeek Harness. A safe-pause control beside the composer stops a run before its next model request instead of aborting work mid-stream, and one status bar — anchored in the desktop title bar, floating in a browser tab — reports and controls every conversation at once.
 
 ## What it does
@@ -8,7 +10,7 @@ Session control for DeepSeek Harness. A safe-pause control beside the composer s
 
 1. Each armed run keeps the step in flight — the streaming response and its whole tool batch settle normally.
 2. Its next proposed step never reaches a model request: the turn is cancelled at that boundary with `keepInbox`, so no request is issued and nothing is cut mid-stream.
-3. Each turn is recorded as a user stop, so the transcript's turn header reads **已停止 / Stopped** rather than **已完成 / Completed**. The Session returns to idle, and the input that boundary had already claimed goes back to the inbox, so a queued message or steering text is not dropped.
+3. Each turn is recorded as a user stop, so the transcript's turn header reads **Stopped** rather than **Completed**. The Session returns to idle, and the input that boundary had already claimed goes back to the inbox, so a queued message or steering text is not dropped.
 
 The pause only moves down the delegation tree. Pausing a subagent never arms or stops its parent.
 
@@ -40,7 +42,7 @@ A second entry, `shell.overlay` id `session-control.monitor`, draws one bar: the
 
 Only the floating deployment draws a surface — the theme's base background with the `l3` hairline border and a shadow, so the bar reads as a panel over the page. The desktop bar draws no fill at all: a filled pill inside the caption row would read as a second piece of window chrome.
 
-The floating bar also carries a gear button that opens one display setting: frosted glass (`毛玻璃效果`), on by default. On, the surface is the theme base at 72% with `backdrop-filter: blur(14px) saturate(1.6)`; off, it is the opaque base. The choice is stored in `dsh.session-control.glass` and applies to the bar and its popovers.
+The floating bar also carries a gear button that opens one display setting: frosted glass (`Frosted glass`), on by default. On, the surface is the theme base at 72% with `backdrop-filter: blur(14px) saturate(1.6)`; off, it is the opaque base. The choice is stored in `dsh.session-control.glass` and applies to the bar and its popovers.
 
 Placement depends on the deployment, decided by the `data-platform` marker only the desktop preload writes:
 
@@ -54,11 +56,11 @@ A dragged position is stored in frame pixels (`dsh.session-control.position`), c
 
 The chip reports the most urgent fact first:
 
-| Condition                                | Chip                                |
-| ---------------------------------------- | ----------------------------------- |
-| Any conversation running                 | Spinner + `n 个正在运行的对话`      |
-| None running, some finished and unviewed | Green done dot + `n 个未查看的对话` |
-| Neither                                  | `没有需要关注的对话`, no icon       |
+| Condition                                | Chip                                        |
+| ---------------------------------------- | ------------------------------------------- |
+| Any conversation running                 | Spinner + `n running conversations`         |
+| None running, some finished and unviewed | Green done dot + `n unviewed conversations` |
+| Neither                                  | `Nothing needs attention`, no icon          |
 
 Opening the chip lists the running conversations and then the finished-but-unviewed ones. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action; clicking the title opens that conversation. The panel is capped at 60vh (and 420px) and scrolls.
 

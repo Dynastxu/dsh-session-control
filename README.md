@@ -54,15 +54,17 @@ Placement depends on the deployment, decided by the `data-platform` marker only 
 
 A dragged position is stored in frame pixels (`dsh.session-control.position`), clamped to the frame on drop and on window resize, and wins over the floating default; the desktop bar ignores that key and clears nothing, so clearing it restores the browser default. A floating bar dropped in the lower half opens its panel upward. The chip itself is only a button — it opens and closes the panel — so a drag can never be mistaken for a click.
 
-The chip reports the most urgent fact first:
+The chip reports the most urgent fact first, in the same order DSH's own Session rows rank statuses — a pending interaction outranks the run it blocks on:
 
-| Condition                                | Chip                                        |
-| ---------------------------------------- | ------------------------------------------- |
-| Any conversation running                 | Spinner + `n running conversations`         |
-| None running, some finished and unviewed | Green done dot + `n unviewed conversations` |
-| Neither                                  | `Nothing needs attention`, no icon          |
+| Condition                                  | Chip                                                  |
+| ------------------------------------------ | ----------------------------------------------------- |
+| Any conversation waiting for your response | Amber warning dot + `n conversations waiting for you` |
+| None waiting, any conversation running     | Spinner + `n running conversations`                   |
+| None waiting or running, some paused       | Neutral idle dot + `n paused conversations`           |
+| Only finished-and-unviewed ones left       | Green done dot + `n unviewed conversations`           |
+| None of the above                          | `Nothing needs attention`, no icon                    |
 
-Opening the chip lists the running conversations and then the finished-but-unviewed ones. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action; clicking the title opens that conversation. The panel is capped at 60vh (and 420px) and scrolls.
+Opening the chip lists the conversations in that order — **Waiting for your response**, **Running**, **Paused**, **Finished, unviewed** — and each conversation appears in exactly one, the most urgent one. The rows reuse the shared `StateDot` semantics of DSH's own sidebar: the waiting state draws the `warning` dot, which is `--dsw-alias-state-warn-primary` (amber `#f59e0b`) — the same color DSH uses for _Waiting for approval_, _Waiting for answer_, and _Plan awaiting review_; running keeps the loading ring, a held pause the neutral `idle` dot, and an unviewed completion the green `done` dot. Every row carries the state dot, the conversation title, elapsed time, a pause/continue action, and a stop action; clicking the title opens that conversation. The panel is capped at 60vh (and 420px) and scrolls.
 
 Bulk actions run over every conversation at once: pause-all (which becomes continue-all once every running conversation already holds a pause), and stop-all. Continue-all covers every Session that holds a pause phase, including the ones a pause already stopped — a stopped Session is not running, so a continue restricted to running rows could never resume it. Stop is the Session controller's own cancellation: the turn ends as a stopped user turn and queued input is kept. Stop is styled as the danger action.
 

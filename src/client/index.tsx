@@ -6,8 +6,9 @@
  * - `conversation.input.activity` (the composer seat) arms, cancels, and
  *   continues the pause of the Session in view.
  * - `shell.overlay` (root scope) draws the title-bar monitor: the aggregate
- *   state of every top-level conversation, the running and the
- *   finished-but-unviewed ones, and pause/continue/stop for one or all of them.
+ *   state of every top-level conversation — the ones waiting for the user, the
+ *   running, the paused, and the finished-but-unviewed — and
+ *   pause/continue/stop for one or all of them.
  *
  * The monitor is the single writer of the phases because it observes every
  * Session; the composer seat only reads them. The monitor stays mounted
@@ -72,7 +73,11 @@ type SessionControlKey =
   | "monitor.resume"
   | "monitor.terminate"
   | "monitor.failed"
+  | "monitor.pending"
+  | "monitor.paused"
+  | "monitor.pendingHeading"
   | "monitor.runningHeading"
+  | "monitor.pausedHeading"
   | "monitor.unreadHeading"
   | "monitor.settings"
   | "monitor.glass";
@@ -102,6 +107,8 @@ window.__ModuleLoader__.load({
       "pause.failed": "暂停状态切换失败",
       "monitor.running": "{count} 个正在运行的对话",
       "monitor.unread": "{count} 个未查看的对话",
+      "monitor.pending": "{count} 个对话在等待你响应",
+      "monitor.paused": "{count} 个已暂停的对话",
       "monitor.none": "没有需要关注的对话",
       "monitor.expand": "展开对话状态",
       "monitor.collapse": "收起对话状态",
@@ -113,6 +120,8 @@ window.__ModuleLoader__.load({
       "monitor.terminate": "终止",
       "monitor.failed": "操作失败",
       "monitor.runningHeading": "正在运行",
+      "monitor.pendingHeading": "等待用户响应",
+      "monitor.pausedHeading": "已暂停",
       "monitor.unreadHeading": "已完成，未查看",
       "monitor.settings": "显示设置",
       "monitor.glass": "毛玻璃效果",
@@ -125,6 +134,8 @@ window.__ModuleLoader__.load({
       "pause.failed": "Could not change the pause state",
       "monitor.running": "{count} running conversations",
       "monitor.unread": "{count} unviewed conversations",
+      "monitor.pending": "{count} conversations waiting for you",
+      "monitor.paused": "{count} paused conversations",
       "monitor.none": "Nothing needs attention",
       "monitor.expand": "Show conversation status",
       "monitor.collapse": "Hide conversation status",
@@ -136,6 +147,8 @@ window.__ModuleLoader__.load({
       "monitor.terminate": "Stop",
       "monitor.failed": "The action failed",
       "monitor.runningHeading": "Running",
+      "monitor.pendingHeading": "Waiting for your response",
+      "monitor.pausedHeading": "Paused",
       "monitor.unreadHeading": "Finished, unviewed",
       "monitor.settings": "Display settings",
       "monitor.glass": "Frosted glass",
@@ -195,6 +208,13 @@ window.__ModuleLoader__.load({
       readonly title: string;
       readonly running: boolean;
       readonly phase: PausePhase | "idle";
+      /**
+       * The shared state dot the row draws: the amber warning dot while a
+       * pending interaction blocks the run on the user, the loading ring while
+       * it is live, the neutral idle dot while a pause holds it stopped, and the
+       * green done dot for a finished conversation.
+       */
+      readonly dot: "warning" | "ongoing" | "idle" | "done";
       /** Observed run span in milliseconds; absent when this page never saw the run start. */
       readonly elapsed: number | null;
     }
@@ -211,6 +231,8 @@ window.__ModuleLoader__.load({
       readonly id: SessionId;
       readonly title: string;
       readonly phase: PausePhase | "idle";
+      /** Whether the Session's turn is live right now. */
+      readonly running: boolean;
     }
 
     const COMPOSER_CLASS = "dsh-session-control-pause";
@@ -648,7 +670,7 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
             }}
           >
             <span className="dsh-session-control-dot">
-              <StateDot state={row.running ? "ongoing" : "done"} />
+              <StateDot state={row.dot} />
             </span>
             <span className="dsh-session-control-row-title">{row.title}</span>
           </button>
@@ -684,8 +706,8 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
     }
 
     /**
-     * The title-bar monitor: aggregate state, the running and unviewed
-     * conversations, and pause/continue/stop for one row or all of them.
+     * The title-bar monitor: aggregate state, the waiting, running, paused and
+     * unviewed conversations, and pause/continue/stop for one row or all of them.
      * @param props - root slot props, injected command face, and dictionary.
      * @returns the monitor.
      */
@@ -735,9 +757,15 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
       const confirming = React.useRef(new Set<SessionId>());
 
       // Top-level conversations only: a subagent Session is not a conversation the
-      // user started, and a blank New Session carries no work.
+      // user started, and a blank New Session carries no work. One row belongs to
+      // exactly one group, most urgent first: a pending interaction outranks the
+      // run it blocks on (the user is the reason nothing moves), a live turn
+      // outranks a pause it has already left behind, a held pause outranks the
+      // completion reminder its own stop produced.
       const entries = React.useMemo(() => {
+        const waiting: Entry[] = [];
         const running: Entry[] = [];
+        const paused: Entry[] = [];
         const unread: Entry[] = [];
         for (const id of Object.keys(list) as SessionId[]) {
           const row = list[id];
@@ -745,11 +773,13 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
           const status = statuses.get(id);
           const isRunning = status?.running ?? row.running;
           const phase = phases[id] ?? "idle";
-          if (isRunning) running.push({ id, title: row.displayTitle, phase });
-          else if (status?.completionUnread === true)
-            unread.push({ id, title: row.displayTitle, phase });
+          const entry: Entry = { id, title: row.displayTitle, phase, running: isRunning };
+          if (status?.pendingInteraction !== undefined) waiting.push(entry);
+          else if (isRunning) running.push(entry);
+          else if (phase !== "idle") paused.push(entry);
+          else if (status?.completionUnread === true) unread.push(entry);
         }
-        return { running, unread };
+        return { waiting, running, paused, unread };
       }, [list, statuses, phases]);
 
       // The monitor owns every phase transition. An armed pause whose run ended
@@ -967,22 +997,31 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
         if (!stopped) fail();
       };
 
-      const rowsOf = (items: readonly Entry[], running: boolean): MonitorRowModel[] =>
+      const rowsOf = (items: readonly Entry[], dot: MonitorRowModel["dot"]): MonitorRowModel[] =>
         items.map((entry) => {
           const record = timing.current.get(entry.id);
           const elapsed =
             record === undefined
               ? null
-              : running
+              : entry.running
                 ? now - record.startedAt
                 : record.endedAt === null
                   ? null
                   : record.endedAt - record.startedAt;
-          return { id: entry.id, title: entry.title, running, phase: entry.phase, elapsed };
+          return {
+            id: entry.id,
+            title: entry.title,
+            running: entry.running,
+            phase: entry.phase,
+            dot,
+            elapsed,
+          };
         });
 
-      const runningRows = rowsOf(entries.running, true);
-      const unreadRows = rowsOf(entries.unread, false);
+      const waitingRows = rowsOf(entries.waiting, "warning");
+      const runningRows = rowsOf(entries.running, "ongoing");
+      const pausedRows = rowsOf(entries.paused, "idle");
+      const unreadRows = rowsOf(entries.unread, "done");
       const runningIds = runningRows.map((row) => row.id);
       // The bulk pause/continue covers every Session that holds a phase, not only
       // the running ones: a pause that already fired leaves the Session stopped, and
@@ -996,18 +1035,30 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
       const bulkPauseLabel =
         bulkPauseVerb === "arm" ? t("monitor.pauseAll") : t("monitor.resumeAll");
 
+      // The chip reports the most urgent fact first, in the same order DSH's own
+      // Session rows rank statuses: a pending interaction outranks a live run.
       const counters =
-        runningRows.length > 0
+        waitingRows.length > 0
           ? {
-              icon: <StateDot state="ongoing" />,
-              text: t("monitor.running", { count: runningRows.length }),
+              icon: <StateDot state="warning" />,
+              text: t("monitor.pending", { count: waitingRows.length }),
             }
-          : unreadRows.length > 0
+          : runningRows.length > 0
             ? {
-                icon: <StateDot state="done" />,
-                text: t("monitor.unread", { count: unreadRows.length }),
+                icon: <StateDot state="ongoing" />,
+                text: t("monitor.running", { count: runningRows.length }),
               }
-            : { icon: null, text: t("monitor.none") };
+            : pausedRows.length > 0
+              ? {
+                  icon: <StateDot state="idle" />,
+                  text: t("monitor.paused", { count: pausedRows.length }),
+                }
+              : unreadRows.length > 0
+                ? {
+                    icon: <StateDot state="done" />,
+                    text: t("monitor.unread", { count: unreadRows.length }),
+                  }
+                : { icon: null, text: t("monitor.none") };
 
       const rowNode = (row: MonitorRowModel): ReactElement => (
         <MonitorRow
@@ -1142,16 +1193,35 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
               role="dialog"
               aria-label={t("monitor.expand")}
             >
-              {runningRows.length === 0 && unreadRows.length === 0 ? (
+              {waitingRows.length === 0 &&
+              runningRows.length === 0 &&
+              pausedRows.length === 0 &&
+              unreadRows.length === 0 ? (
                 <div className="dsh-session-control-empty">{t("monitor.none")}</div>
               ) : (
                 <>
+                  {waitingRows.length === 0 ? null : (
+                    <>
+                      <div className="dsh-session-control-heading">
+                        {t("monitor.pendingHeading")}
+                      </div>
+                      {waitingRows.map(rowNode)}
+                    </>
+                  )}
                   {runningRows.length === 0 ? null : (
                     <>
                       <div className="dsh-session-control-heading">
                         {t("monitor.runningHeading")}
                       </div>
                       {runningRows.map(rowNode)}
+                    </>
+                  )}
+                  {pausedRows.length === 0 ? null : (
+                    <>
+                      <div className="dsh-session-control-heading">
+                        {t("monitor.pausedHeading")}
+                      </div>
+                      {pausedRows.map(rowNode)}
                     </>
                   )}
                   {unreadRows.length === 0 ? null : (

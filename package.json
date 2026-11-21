@@ -1,6 +1,6 @@
 {
   "name": "@dynastxu/dsh-session-control",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Session control: safe pause for a running Session and its subagents, plus a title-bar or floating status bar that flags the conversations waiting for your response, and pauses, continues, or stops the running, paused, and unviewed ones.",
   "keywords": [
     "dsh",

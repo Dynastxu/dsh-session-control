@@ -4,6 +4,9 @@
  * continuation that resumes every stopped run.
  */
 
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -108,7 +111,7 @@ interface HostStub {
 }
 
 /** A Cordis-shaped Host context over a fixed population of live agents. */
-function createHost(agents: AgentStub["agent"][] = []): HostStub {
+function createHost(agents: AgentStub["agent"][] = [], profileDir?: string): HostStub {
   const listeners = new Map<string, (...args: never[]) => unknown>();
   const commands = new Map<string, CommandStub>();
   const warnings: unknown[][] = [];
@@ -134,6 +137,8 @@ function createHost(agents: AgentStub["agent"][] = []): HostStub {
       }),
   };
   apply({
+    get: (name: string) =>
+      name === "profileContext" && profileDir !== undefined ? { dir: profileDir } : undefined,
     on: (event: string, listener: (...args: never[]) => unknown) => {
       listeners.set(event, listener);
       return () => {
@@ -162,12 +167,12 @@ function createHost(agents: AgentStub["agent"][] = []): HostStub {
 }
 
 /** Delegation tree: root keeps two running children, one idle child, one grandchild. */
-function createTree() {
-  const root = createAgent("root");
-  const first = createAgent("child-1", { parent: "root", origin: "subagent" });
-  const second = createAgent("child-2", { parent: "root", origin: "subagent" });
+function createTree(status = "running") {
+  const root = createAgent("root", { status });
+  const first = createAgent("child-1", { parent: "root", origin: "subagent", status });
+  const second = createAgent("child-2", { parent: "root", origin: "subagent", status });
   const parked = createAgent("child-3", { parent: "root", origin: "subagent", status: "idle" });
-  const grandchild = createAgent("grandchild", { parent: "child-1", origin: "subagent" });
+  const grandchild = createAgent("grandchild", { parent: "child-1", origin: "subagent", status });
   return {
     root,
     first,
@@ -176,6 +181,11 @@ function createTree() {
     grandchild,
     all: [root, first, second, parked, grandchild],
   };
+}
+
+/** A fresh profile directory, so a case can prove what a later Host reads. */
+function temporaryProfile(): string {
+  return mkdtempSync(join(tmpdir(), "session-control-"));
 }
 
 const enter = () => Promise.resolve({ kind: "enter", messages: [] });
@@ -345,13 +355,25 @@ describe("host half", () => {
     expect(tree.root.received.followups).toEqual([]);
   });
 
-  it("disposal releases every record", async () => {
+  it("disposal releases the live record while the Session keeps its pause", async () => {
+    const profile = temporaryProfile();
     const tree = createTree();
-    const host = createHost(tree.all.map((item) => item.agent));
+    const host = createHost(
+      tree.all.map((item) => item.agent),
+      profile,
+    );
     host.invoke(tree.root.agent);
     await stopAtBoundary(host, tree.root.agent);
     host.fire("agent/disposed", { agent: tree.root.agent });
-    expect(host.invoke(tree.root.agent, "resume").kind).toBe("error");
+    // The Agent object is gone, but the Session it drove still carries the
+    // stopped turn, so a later Host over the same profile can continue it.
+    const next = createTree("idle");
+    const reopened = createHost(
+      next.all.map((item) => item.agent),
+      profile,
+    );
+    expect(reopened.invoke(next.root.agent, "status").kind).toBe("success");
+    expect(reopened.invoke(next.root.agent, "resume").kind).toBe("success");
   });
 
   it("/pause off disarms the whole pause", async () => {
@@ -411,5 +433,107 @@ describe("host half", () => {
     await stopAtBoundary(host, tree.root.agent);
     host.invoke(tree.root.agent, "resume");
     expect(host.invoke(tree.root.agent, "status").kind).toBe("error");
+  });
+
+  it("a fired pause survives a Host restart", async () => {
+    const profile = temporaryProfile();
+    const first = createTree();
+    const before = createHost(
+      first.all.map((item) => item.agent),
+      profile,
+    );
+    before.invoke(first.root.agent);
+    await stopAtBoundary(before, first.root.agent);
+
+    // A new Host process: its memory holds no pause, its profile still does.
+    const second = createTree("idle");
+    const after = createHost(
+      second.all.map((item) => item.agent),
+      profile,
+    );
+    expect(after.invoke(second.root.agent, "status").kind).toBe("success");
+    const result = after.invoke(second.root.agent, "resume");
+    expect(result.kind).toBe("success");
+    expect(result.text).toMatch(/1 paused run/u);
+    expect(second.root.received.followups.length).toBe(1);
+    expect(second.root.received.followups[0]?.content).toEqual([]);
+    expect(second.root.received.followups[0]?.source.kind).toBe("retry");
+    // The receipt spends the record, so it cannot fire twice.
+    expect(after.invoke(second.root.agent, "status").kind).toBe("error");
+    expect(after.invoke(second.root.agent, "resume").kind).toBe("error");
+  });
+
+  it("an armed pause that never fired is not persisted", () => {
+    const profile = temporaryProfile();
+    const first = createTree();
+    const before = createHost(
+      first.all.map((item) => item.agent),
+      profile,
+    );
+    before.invoke(first.root.agent);
+    // Nothing reached a boundary, so there is no stopped run to continue.
+    const second = createTree("idle");
+    const after = createHost(
+      second.all.map((item) => item.agent),
+      profile,
+    );
+    expect(after.invoke(second.root.agent, "status").kind).toBe("error");
+  });
+
+  it("a new run spends the persisted pause", async () => {
+    const profile = temporaryProfile();
+    const first = createTree();
+    const before = createHost(
+      first.all.map((item) => item.agent),
+      profile,
+    );
+    before.invoke(first.root.agent);
+    await stopAtBoundary(before, first.root.agent);
+
+    const second = createTree("idle");
+    const after = createHost(
+      second.all.map((item) => item.agent),
+      profile,
+    );
+    // The user sent an ordinary message instead of continuing the pause.
+    after.fire("agent/status", { agent: second.root.agent, status: "running" });
+    expect(after.invoke(second.root.agent, "status").kind).toBe("error");
+    expect(after.invoke(second.root.agent, "resume").kind).toBe("error");
+    expect(second.root.received.followups).toEqual([]);
+  });
+
+  it("/pause off clears a pause that outlived its Host", async () => {
+    const profile = temporaryProfile();
+    const first = createTree();
+    const before = createHost(
+      first.all.map((item) => item.agent),
+      profile,
+    );
+    before.invoke(first.root.agent);
+    await stopAtBoundary(before, first.root.agent);
+
+    const second = createTree("idle");
+    const after = createHost(
+      second.all.map((item) => item.agent),
+      profile,
+    );
+    expect(after.invoke(second.root.agent, "off").kind).toBe("success");
+    expect(after.invoke(second.root.agent, "status").kind).toBe("error");
+    expect(second.root.received.followups).toEqual([]);
+  });
+
+  it("an unreadable ledger is ignored instead of disabling the command", () => {
+    const profile = temporaryProfile();
+    writeFileSync(join(profile, "session-control.pauses.json"), "{ not json", "utf8");
+    const tree = createTree();
+    const host = createHost(
+      tree.all.map((item) => item.agent),
+      profile,
+    );
+    expect(host.warnings.length).toBe(1);
+    expect(host.invoke(tree.root.agent, "status").kind).toBe("error");
+    // A pause still works over the unreadable ledger: the first write replaces it.
+    expect(host.invoke(tree.root.agent).kind).toBe("success");
+    expect(host.invoke(tree.root.agent, "off").kind).toBe("success");
   });
 });

@@ -751,6 +751,8 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
       } | null>(null);
 
       const list = useSessions((state) => state.byId);
+      /* The catalog phase tells apart "no such Session" from "not loaded yet". */
+      const listPhase = useSessions((state) => state.phase);
       const statuses = useSessionStatus((state) => state);
       const phases = usePausePhases((state) => state.phases);
       /** Sessions whose armed pause is being confirmed with the Host. */
@@ -786,12 +788,19 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
       // either stopped at its boundary or lost the race to the model's last step, so
       // the Host is asked which of the two happened — the client cannot tell from
       // the run ending alone. A paused run that started again is live.
+      //
+      // A cold start has no Sessions until the catalog's first pull lands. A
+      // stored phase is kept while the catalog is still pending: forgetting it
+      // then would erase a pause that survived the DSH restart before its
+      // conversation appears. Once the catalog is ready, an id that has no row
+      // really is a Session that no longer exists.
+      const catalogReady = listPhase === "ready";
       React.useEffect(() => {
         for (const [id, phase] of Object.entries(phases)) {
           const sessionId = id as SessionId;
           const row = list[sessionId];
           if (row === undefined) {
-            setPhase(sessionId, "idle");
+            if (catalogReady) setPhase(sessionId, "idle");
             continue;
           }
           const isRunning = statuses.get(sessionId)?.running ?? row.running;
@@ -806,7 +815,7 @@ html[data-windows-titlebar] .dsh-session-control-monitor-root{top:calc((var(--ds
             setPhase(sessionId, held ? "paused" : "idle");
           });
         }
-      }, [list, statuses, phases, setPhase, confirmPaused]);
+      }, [list, listPhase, statuses, phases, setPhase, confirmPaused]);
 
       // Elapsed readings. A run is timed from the moment this page first saw it
       // start, and the span is persisted, so a page or plugin reload keeps counting

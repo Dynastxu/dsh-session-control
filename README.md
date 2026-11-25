@@ -16,6 +16,8 @@ The pause only moves down the delegation tree. Pausing a subagent never arms or 
 
 **Continue.** The button stays in place and turns into a continue control (play glyph, primary fill). Pressing it sends one empty continuation receipt to every run this pause stopped, so each one wakes over its own history and continues from where it stopped: the completed tool results are already in its log. Members that never reached a boundary are only disarmed.
 
+A pause that fired also outlives the DSH process. The Host writes the stopped Session to a ledger in the profile (`session-control.pauses.json`) at the moment the pause stops its run, so after restarting DSH the control still shows continue and `/pause resume` opens that Session's next turn over the log the stop left. The ledger record is spent by the continue itself, by `/pause off`, or by the Session starting any new run on its own.
+
 A pause that never reached a boundary — because a run ended on its own — is spent with that run. The control clears itself rather than pretending there was something to continue.
 
 ### The three states
@@ -76,7 +78,7 @@ The monitor covers top-level conversations; subagent Sessions are left to the co
 
 A pause armed during a model's last step can lose the race: the run finishes before the request boundary is reached, so nothing stops. The client cannot tell that apart from a pause that fired, so when an armed run ends the monitor asks the Host (`/pause status`) and keeps the continue action only if a stopped pause is really held.
 
-Stopped phases are persisted in `localStorage` (`dsh.session-control.pauses`), so a page reload still offers the continue action. An armed pause belongs to a run in flight and is not persisted; after a reload the user re-arms it.
+Stopped phases are persisted twice. The browser mirror lives in `localStorage` (`dsh.session-control.pauses`), so a page or plugin reload still offers the continue action; a cold start keeps those phases while the Session catalog is still loading, instead of mistaking "not listed yet" for "deleted". The Host ledger in the profile (`session-control.pauses.json`) is the durable half: `/pause status` answers from it when the process that fired the pause is gone, which is what keeps the continue action working after a DSH restart. An armed pause belongs to a run in flight and is neither stored nor part of the ledger; after a reload the user re-arms it.
 
 ## The `/pause` command
 
@@ -84,8 +86,8 @@ The button drives the same user-facing command, which can also be typed:
 
 - `/pause` arms a pause across the running delegation subtree. It is idempotent and refused while no run is active.
 - `/pause off` cancels an armed pause before it fires.
-- `/pause resume` continues every run the pause stopped; it is refused when no pause is waiting.
-- `/pause status` answers whether this Agent still holds a pause that stopped its run, which is how the monitor detects a pause the model's last step overtook.
+- `/pause resume` continues every run the pause stopped; a pause that outlived its Host process is continued from the profile ledger, and the command is refused only when neither holds a pause.
+- `/pause status` answers whether this Agent still holds a pause that stopped its run, which is how the monitor detects a pause the model's last step overtook; after a restart it answers from the ledger.
 
 ## The control
 
@@ -105,11 +107,11 @@ It reuses the composer's own geometry and materials: a 34px circle on the row's 
 
 ## Known limitations
 
-- The paused state lives in the Host process and in the client's pause-phase observable. Reloading the page during a pause loses the mirror; `/pause resume` in the composer still continues the runs, and a pause whose runs ended on their own is cleared by the Host.
-- Pausing a one-shot subagent stops it inside the parent's tool call. The parent blocks in that step until the subagent is resumed, because the parent cannot reach its own boundary while the call is outstanding.
+- Paused state is durable per profile: the Host ledger keeps fired pauses across restarts, and the client mirror keeps the control across page and plugin reloads. A pause armed only in the client's memory, before its run reaches the boundary, is not durable by design — the run it belongs to ended with the process.
+- Pausing a one-shot subagent stops it inside the parent's tool call. The parent blocks in that step until the subagent is resumed, because the parent cannot reach its own boundary while the call is outstanding. After a Host restart only the addressed Session in the ledger is continued; descendants that no longer exist are not.
 - The parent notice names agents by Session id. Display names live in the subagent catalog, which needs an asynchronous catalog read on the pause path.
 - `conversation.input.activity` holds one occupant. Enabling the experimental voice-input plugin, which also registers there, replaces this control.
-- The monitor's pause phases are client state, shared with the composer button and lost on reload; the Host stays authoritative and refuses a continue whose pause it no longer holds.
+- The monitor's pause phases are client state shared with the composer button; the profile ledger is their durable authority, and a stale mirror is dropped when the Host refuses the continue it no longer holds.
 
 ## Development
 

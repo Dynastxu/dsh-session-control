@@ -12,6 +12,11 @@
  * notifies its live parent through a queued runtime context notice; the pause
  * never arms an ancestor.
  *
+ * A pause that actually fired outlives the Host process that fired it: the
+ * Session id is written to a small ledger in the profile directory, so after a
+ * DSH restart `/pause status` still reports the Session and `/pause resume`
+ * opens its next turn over the log the stop already left.
+ *
  * The composer control reaches this plugin through the user-facing `pause`
  * command, the client-callable Host entry point a bundle can add without a
  * generated Remote contribution.
@@ -19,7 +24,9 @@
  * @module @dynastxu/dsh-session-control
  */
 
+import { readFileSync, renameSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { Context } from "@deepseek-ai/cordis";
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import type { CommandResult } from "@deepseek-ai/dsh-commands";
@@ -52,10 +59,107 @@ const ARGUMENT_RESUME = "resume";
 /** Argument that reports whether this Agent holds a pause that already fired. */
 const ARGUMENT_STATUS = "status";
 
+/** Profile file that keeps fired pauses across a Host restart. */
+const LEDGER_FILE = "session-control.pauses.json";
+
+/** Ledger format version a reader must recognize before trusting its records. */
+const LEDGER_VERSION = 1;
+
 /** The agents one pause covers; members share the record. */
 interface PauseRecord {
+  /** The Agent the user addressed; the only member a restart can continue. */
+  readonly root: Agent;
   readonly armed: Set<Agent>;
   readonly stopped: Set<Agent>;
+}
+
+/** What one fired pause leaves durably: the Session and when it stopped. */
+interface LedgerEntry {
+  readonly pausedAt: string;
+}
+
+/** Logger surface the ledger needs; the Host logger satisfies it. */
+interface LedgerLogger {
+  warn(message: string, error?: unknown): void;
+}
+
+/**
+ * Resolve the profile directory that owns this plugin's durable ledger.
+ * @param ctx - Host context, which may expose the launcher's profile context.
+ * @returns the directory, or undefined outside a profile (memory-only pauses).
+ */
+function profileDirectory(ctx: Context): string | undefined {
+  const read = (ctx as { get?: (name: string) => unknown }).get;
+  if (typeof read === "function") {
+    const profile = read.call(ctx, "profileContext") as { readonly dir?: unknown } | undefined;
+    if (profile !== undefined && typeof profile.dir === "string" && profile.dir !== "")
+      return profile.dir;
+  }
+  const fromEnvironment = process.env.DSH_PROFILE_DIR;
+  return fromEnvironment === undefined || fromEnvironment === "" ? undefined : fromEnvironment;
+}
+
+/**
+ * Read the fired pauses a previous Host left in the profile.
+ * @param directory - profile directory, or undefined when persistence is off.
+ * @param logger - Host logger for an unreadable or malformed ledger.
+ * @returns one entry per Session whose pause fired, keyed by Session id.
+ */
+function readLedger(
+  directory: string | undefined,
+  logger: LedgerLogger,
+): Map<SessionId, LedgerEntry> {
+  const ledger = new Map<SessionId, LedgerEntry>();
+  if (directory === undefined) return ledger;
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(join(directory, LEDGER_FILE), "utf8"));
+    if (typeof parsed !== "object" || parsed === null) return ledger;
+    const stored = parsed as { version?: unknown; pauses?: unknown };
+    if (stored.version !== LEDGER_VERSION) return ledger;
+    if (typeof stored.pauses !== "object" || stored.pauses === null) return ledger;
+    for (const [id, value] of Object.entries(stored.pauses)) {
+      if (typeof value !== "object" || value === null) continue;
+      const pausedAt = (value as { pausedAt?: unknown }).pausedAt;
+      if (typeof pausedAt !== "string") continue;
+      ledger.set(id as SessionId, { pausedAt });
+    }
+  } catch (error: unknown) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      logger.warn("session-control: could not read the pause ledger", error);
+    }
+  }
+  return ledger;
+}
+
+/**
+ * Replace the ledger atomically, so an interrupted write leaves the previous
+ * records instead of a truncated file.
+ * @param directory - profile directory, or undefined when persistence is off.
+ * @param ledger - the complete set of fired pauses to keep.
+ * @param logger - Host logger for a write that cannot land.
+ */
+function writeLedger(
+  directory: string | undefined,
+  ledger: ReadonlyMap<SessionId, LedgerEntry>,
+  logger: LedgerLogger,
+): void {
+  if (directory === undefined) return;
+  const target = join(directory, LEDGER_FILE);
+  const body = JSON.stringify(
+    {
+      version: LEDGER_VERSION,
+      pauses: Object.fromEntries([...ledger].map(([id, entry]) => [id, entry])),
+    },
+    undefined,
+    2,
+  );
+  const staged = `${target}.${String(process.pid)}.tmp`;
+  try {
+    writeFileSync(staged, `${body}\n`, "utf8");
+    renameSync(staged, target);
+  } catch (error: unknown) {
+    logger.warn("session-control: could not save the pause ledger", error);
+  }
 }
 
 /**
@@ -133,6 +237,26 @@ function descendantsOf(agents: readonly Agent[], root: Agent): Agent[] {
 export function apply(ctx: Context): void {
   /** Agent -> the pause it belongs to; members of one pause share the record. */
   const members = new WeakMap<Agent, PauseRecord>();
+  /** Fired pauses the Host process does not hold: the ledger a restart reads. */
+  const directory = profileDirectory(ctx);
+  const ledger = readLedger(directory, ctx.logger);
+
+  /**
+   * Keep one fired pause in the profile ledger.
+   * @param sessionId - Session whose run the pause stopped.
+   */
+  function remember(sessionId: SessionId): void {
+    ledger.set(sessionId, { pausedAt: new Date().toISOString() });
+    writeLedger(directory, ledger, ctx.logger);
+  }
+
+  /**
+   * Drop one Session from the profile ledger when its pause is spent.
+   * @param sessionId - Session to forget.
+   */
+  function forgetPersisted(sessionId: SessionId): void {
+    if (ledger.delete(sessionId)) writeLedger(directory, ledger, ctx.logger);
+  }
 
   /**
    * Release one member from its pause.
@@ -159,12 +283,16 @@ export function apply(ctx: Context): void {
 
   // A pause record belongs to one stopped run. An armed member that never
   // reached its boundary is spent when its run ends, and any member is spent
-  // when its next run starts.
+  // when its next run starts. A run that starts also spends the persisted pause
+  // of its own Session: the user moved on instead of continuing it.
   ctx.on("agent/status", ({ agent, status }) => {
+    if (status === "running") forgetPersisted(agent.id);
     const record = members.get(agent);
     if (record === undefined) return;
     if (status === "running" || !record.stopped.has(agent)) release(agent, record);
   });
+  // Disposal only drops this Agent's live record: the Session may be reopened
+  // later, and its fired pause belongs to the Session, not to one Agent object.
   ctx.on("agent/disposed", ({ agent }) => {
     const record = members.get(agent);
     if (record !== undefined) release(agent, record);
@@ -175,6 +303,9 @@ export function apply(ctx: Context): void {
     if (record === undefined || !record.armed.has(payload.agent)) return next();
     record.armed.delete(payload.agent);
     record.stopped.add(payload.agent);
+    // The addressed Session is the one a restart can continue; its descendants
+    // are reached through it, so only the root id is worth a durable record.
+    if (payload.agent === record.root) remember(payload.agent.id);
     // The loop claimed this batch for the step it now stops. Put it back so a
     // pause holds queued input for the next turn rather than discarding it.
     if (payload.messages.length > 0) {
@@ -206,7 +337,7 @@ export function apply(ctx: Context): void {
       };
     }
     if (members.has(agent)) return { kind: "success", text: "Pause already armed." };
-    const record: PauseRecord = { armed: new Set([agent]), stopped: new Set() };
+    const record: PauseRecord = { root: agent, armed: new Set([agent]), stopped: new Set() };
     for (const child of descendantsOf(ctx.agents.list(), agent)) {
       if (child.status === "running") record.armed.add(child);
     }
@@ -233,8 +364,21 @@ export function apply(ctx: Context): void {
    */
   function resume(agent: Agent): CommandResult {
     const record = members.get(agent);
-    if (record === undefined) return { kind: "error", text: "Nothing is paused." };
+    if (record === undefined) {
+      // The pause outlived the Host process that fired it. The Session's log
+      // ends at the stopped turn, so one empty continuation opens its next turn
+      // over that history — the same receipt a live resume submits.
+      if (!ledger.has(agent.id)) return { kind: "error", text: "Nothing is paused." };
+      if (agent.status === "running") {
+        forgetPersisted(agent.id);
+        return { kind: "error", text: "The paused run already started again." };
+      }
+      forgetPersisted(agent.id);
+      agent.followup(continuationMessage());
+      return { kind: "success", text: "Resumed 1 paused run." };
+    }
     const stopped = [...record.stopped];
+    forgetPersisted(record.root.id);
     forget(record);
     for (const target of stopped) target.followup(continuationMessage());
     return {
@@ -265,15 +409,21 @@ export function apply(ctx: Context): void {
       }
       if (argument === ARGUMENT_STATUS) {
         // A run that ended on its own never consumed the armed pause, so this
-        // answers which of the two happened; a client mirror cannot tell.
+        // answers which of the two happened; a client mirror cannot tell. A
+        // pause whose Host process is gone is answered from the ledger.
         const record = members.get(invocation.agent);
-        return record?.stopped.size === undefined || record.stopped.size === 0
-          ? { kind: "error", text: "Nothing is paused." }
-          : { kind: "success", text: "Paused." };
+        return (record?.stopped.size ?? 0) > 0 || ledger.has(invocation.agent.id)
+          ? { kind: "success", text: "Paused." }
+          : { kind: "error", text: "Nothing is paused." };
       }
       if (argument === ARGUMENT_OFF) {
         const record = members.get(invocation.agent);
-        if (record !== undefined) forget(record);
+        if (record !== undefined) {
+          forgetPersisted(record.root.id);
+          forget(record);
+        } else {
+          forgetPersisted(invocation.agent.id);
+        }
         return { kind: "success", text: "Pause canceled." };
       }
       if (argument === ARGUMENT_RESUME) return resume(invocation.agent);
